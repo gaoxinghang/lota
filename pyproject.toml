@@ -1,0 +1,29 @@
+##################################################
+# 构建配置
+##################################################
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+##################################################
+# 项目信息与命令入口
+##################################################
+[project]
+name = "lota"
+version = "0.1.0"
+description = "基于 LangChain 的极简命令行 Agent"
+readme = "README.md"
+requires-python = ">=3.12"
+dynamic = ["dependencies"]
+
+[project.scripts]
+lota = "lota.main:main"
+
+##################################################
+# 包发现与依赖
+##################################################
+[tool.setuptools.packages.find]
+include = ["lota", "lota.*"]
+
+[tool.setuptools.dynamic]
+dependencies = {file = ["requirements.txt"]}
