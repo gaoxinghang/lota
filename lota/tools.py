@@ -36,6 +36,10 @@ def bash(command: str) -> str:
 
   Returns:
       标准输出与错误输出，最多 50000 字符；无输出时为 "(no output)"。
+      超时返回 "Error: Timeout (120s)"。
+
+  Raises:
+      OSError: 子进程无法启动，例如工作目录不存在。
   """
   try:
     done = subprocess.run(
@@ -49,8 +53,6 @@ def bash(command: str) -> str:
     )
   except subprocess.TimeoutExpired:
     return "Error: Timeout (120s)"
-  except OSError as exc:
-    return f"Error: {exc}"
 
   output = (done.stdout + done.stderr).strip()
   return output[:50000] if output else "(no output)"

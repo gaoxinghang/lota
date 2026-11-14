@@ -1,11 +1,32 @@
 """在临时工作目录中验证文件工具。"""
 
+import subprocess
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 from lota import tools
+
+
+class BashToolsTest(unittest.TestCase):
+  """验证 Shell 工具的异常边界，不执行真实命令。"""
+
+  def test_os_error_propagates(self):
+    """操作系统错误抛给调用方处理。"""
+    with patch("lota.tools.subprocess.run", side_effect=OSError("failed")):
+      with self.assertRaisesRegex(OSError, "failed"):
+        tools.bash.invoke({"command": "echo hello"})
+
+
+  def test_timeout_returns_error(self):
+    """超时仍返回错误字符串。"""
+    error = subprocess.TimeoutExpired("echo hello", 120)
+    with patch("lota.tools.subprocess.run", side_effect=error):
+      self.assertEqual(
+        tools.bash.invoke({"command": "echo hello"}),
+        "Error: Timeout (120s)",
+      )
 
 
 class FileToolsTest(unittest.TestCase):

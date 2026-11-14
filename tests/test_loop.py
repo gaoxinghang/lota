@@ -74,6 +74,27 @@ class AgentLoopTest(unittest.TestCase):
     self.assertEqual(model.invoke.call_count, 2)
 
 
+  def test_bash_os_error_returns_to_model(self):
+    """Shell 操作系统错误由循环回传，随后继续调用模型。"""
+    request = AIMessage(content="", tool_calls=[
+      {"name": "bash", "args": {"command": "echo hello"}, "id": "bash-1"},
+    ])
+    final = AIMessage(content="done")
+    model = Mock()
+    model.invoke.side_effect = [request, final]
+    history = []
+
+    with patch("lota.tools.subprocess.run", side_effect=OSError("failed")):
+      self.assertIs(agent_loop(model, history), final)
+
+    result = history[1]
+    self.assertIsInstance(result, ToolMessage)
+    self.assertEqual(result.content, "Error: failed")
+    self.assertEqual(result.tool_call_id, "bash-1")
+    self.assertEqual(result.name, "bash")
+    self.assertEqual(model.invoke.call_count, 2)
+
+
   def test_tool_errors_return_to_model(self):
     """未知工具、参数错误与文件错误不打断后续工具调用。"""
     reader = Mock()
