@@ -30,8 +30,15 @@ def agent_loop(
       return response
 
     for call in response.tool_calls:
-      print(f"\033[33m$ {call['args']['command']}\033[0m")
-      output = TOOL_MAP[call["name"]].invoke(call["args"])
+      print(f"\033[33m> {call['name']}\033[0m")
+      try:
+        handler = TOOL_MAP.get(call["name"])
+        if handler is None:
+          raise ValueError(f"Unknown tool: {call['name']}")
+        output = handler.invoke(call["args"])
+      except (OSError, ValueError) as exc:
+        output = f"Error: {exc}"
+
       print(output[:200])
 
       # 用调用 ID 将结果与模型的工具请求配对。

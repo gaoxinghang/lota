@@ -16,11 +16,12 @@ def main() -> None:
   system = (
     f"You are a coding agent at {os.getcwd()}. "
     f"The bash tool runs commands through {shell}. "
-    "Use bash to solve tasks. Act, don't explain."
+    "Use tools to solve tasks. Prefer file tools for file operations. "
+    "Act, don't explain."
   )
   history: list[BaseMessage] = [SystemMessage(content=system)]
 
-  print("lota · s01 agent loop —— 输入 q 退出\n")
+  print("lota · s02 tool use —— 输入 q 退出\n")
   while True:
     try:
       query = input("lota › ").strip()
