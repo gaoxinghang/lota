@@ -59,6 +59,26 @@ class PermissionTest(unittest.TestCase):
     return result
 
 
+  def test_tool_call_prints_args_before_result(self):
+    """正常、拒绝及参数错误均按黄、绿、灰打印名称、参数和结果。"""
+    calls = [
+      ("write_file", {
+        "path": "demo.txt", "content": "你好\n" * 100,
+      }),
+      ("bash", {"command": "sudo ls"}),
+      ("read_file", {}),
+    ]
+    for name, args in calls:
+      with self.subTest(tool=name), patch("builtins.print") as output:
+        result = self.run_tool(name, args)
+      printed = [item.args[0] for item in output.call_args_list]
+      self.assertEqual(printed[0], f"\033[33m> {name}\033[0m")
+      self.assertEqual(printed[1], f"\033[32m   Args: {args!r}\033[0m")
+      self.assertEqual(
+        printed[-1], f"\033[90m{result.content[:200]}\033[0m"
+      )
+
+
   def test_hard_deny_never_prompts_or_executes(self):
     """硬拒绝优先于审批，所有拒绝项都不能启动子进程。"""
     with patch("lota.tools.subprocess.run") as run:

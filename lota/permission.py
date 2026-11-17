@@ -128,19 +128,20 @@ def permission_middleware(
   """
   call = request.tool_call
   print(f"\033[33m> {call['name']}\033[0m")
+  print(f"\033[32m   Args: {call['args']!r}\033[0m")
   try:
     if request.tool is None:
       raise ValueError(f"Unknown tool: {call['name']}")
     request.tool.get_input_schema().model_validate(call["args"])
     if check_permission(call["name"], call["args"]):
       result = handler(request)
-      print(result.content[:200])
+      print(f"\033[90m{result.content[:200]}\033[0m")
       return result
     output = "Permission denied."
   except (OSError, ValueError) as exc:
     output = f"Error: {exc}"
 
-  print(output[:200])
+  print(f"\033[90m{output[:200]}\033[0m")
   return ToolMessage(
     content=output,
     tool_call_id=call["id"],
