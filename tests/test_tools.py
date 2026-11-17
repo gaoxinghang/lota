@@ -119,26 +119,16 @@ class FileToolsTest(unittest.TestCase):
       tools.read_file.invoke({"path": "binary"})
 
 
-  def test_paths_outside_workspace(self):
-    """所有文件工具拒绝相对越界、绝对越界与外部符号链接。"""
+  def test_glob_outside_workspace(self):
+    """Glob 工具不审批路径，可返回外部路径与符号链接匹配。"""
     target = self.outside / "demo.txt"
     target.write_text("unchanged", encoding="utf-8")
     (self.workspace / "link").symlink_to(
       self.outside, target_is_directory=True
     )
     for path in ["../outside/demo.txt", str(target), "link/demo.txt"]:
-      calls = [
-        (tools.read_file, {"path": path}),
-        (tools.write_file, {"path": path, "content": "changed"}),
-        (tools.edit_file, {
-          "path": path, "old_text": "unchanged", "new_text": "changed",
-        }),
-        (tools.glob, {"pattern": path}),
-      ]
-      for handler, args in calls:
-        with self.subTest(path=path, tool=handler.name):
-          with self.assertRaises(ValueError):
-            handler.invoke(args)
+      with self.subTest(path=path):
+        self.assertEqual(tools.glob.invoke({"pattern": path}), path)
     self.assertEqual(target.read_text(encoding="utf-8"), "unchanged")
 
 
@@ -153,7 +143,7 @@ class FileToolsTest(unittest.TestCase):
 
 
   def test_glob_recursive(self):
-    """递归结果排序去重，并过滤指向外部文件的符号链接。"""
+    """递归结果排序去重，不过滤指向外部文件的符号链接。"""
     (self.workspace / "nested").mkdir()
     for path in ["z.py", "a.py", "nested/b.py"]:
       (self.workspace / path).touch()
@@ -162,7 +152,7 @@ class FileToolsTest(unittest.TestCase):
     (self.workspace / "outside.py").symlink_to(outside_file)
     self.assertEqual(
       tools.glob.invoke({"pattern": "**/**/*.py"}),
-      "a.py\nnested/b.py\nz.py",
+      "a.py\nnested/b.py\noutside.py\nz.py",
     )
     self.assertEqual(
       tools.glob.invoke({"pattern": "*.missing"}), "(no matches)"

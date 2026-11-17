@@ -4,24 +4,25 @@ import os
 
 from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
 
-from lota.loop import agent_loop
+from lota.agent import build_agent
 from lota.model import build_model
-from lota.tools import TOOLS
 
 
 def main() -> None:
   """启动交互式 REPL，输入 q 或按 Ctrl-C 退出。"""
-  llm = build_model().bind_tools(TOOLS)
+  agent = build_agent(build_model())
   shell = "cmd.exe" if os.name == "nt" else "the system shell"
   system = (
     f"You are a coding agent at {os.getcwd()}. "
     f"The bash tool runs commands through {shell}. "
     "Use tools to solve tasks. Prefer file tools for file operations. "
-    "Act, don't explain."
+    "Do not ask for approval yourself. For destructive operations, "
+    "still request the tool call; the harness will approve or deny "
+    "before execution."
   )
   history: list[BaseMessage] = [SystemMessage(content=system)]
 
-  print("lota · s02 tool use —— 输入 q 退出\n")
+  print("lota · s03 permission —— 输入 q 退出\n")
   while True:
     try:
       query = input("lota › ").strip()
@@ -34,8 +35,9 @@ def main() -> None:
       continue
 
     history.append(HumanMessage(content=query))
-    reply = agent_loop(llm, history)
-    print(f"\n{reply.text}\n")
+    result = agent.invoke({"messages": history})
+    history = result["messages"]
+    print(f"\n{history[-1].text}\n")
 
 
 if __name__ == "__main__":
