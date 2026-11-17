@@ -10,6 +10,16 @@ from lota.model import build_model
 
 def main() -> None:
   """启动交互式 REPL，输入 q 或按 Ctrl-C 退出。"""
+  try:
+    import readline
+
+    readline.parse_and_bind("set bind-tty-special-chars off")
+    readline.parse_and_bind("set input-meta on")
+    readline.parse_and_bind("set output-meta on")
+    readline.parse_and_bind("set convert-meta off")
+  except ImportError:
+    pass
+
   agent = build_agent(build_model())
   shell = "cmd.exe" if os.name == "nt" else "the system shell"
   system = (
