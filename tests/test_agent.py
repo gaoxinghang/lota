@@ -10,7 +10,7 @@ from langchain_core.messages import (
 )
 
 from fake_model import ToolCallingModel
-from lota import tools
+from lota import workspace
 from lota.agent import build_agent
 from lota.main import main
 
@@ -22,7 +22,7 @@ class AgentTest(unittest.TestCase):
     """创建隔离工作区，禁止意外请求用户输入。"""
     temporary = self.enterContext(TemporaryDirectory())
     self.workspace = Path(temporary).resolve()
-    self.enterContext(patch.object(tools, "WORKDIR", self.workspace))
+    self.enterContext(patch.object(workspace, "WORKDIR", self.workspace))
     self.enterContext(patch("builtins.print"))
     self.enterContext(patch(
       "builtins.input", side_effect=AssertionError("Unexpected approval")
@@ -44,10 +44,13 @@ class AgentTest(unittest.TestCase):
 
 
   def test_registered_tools(self):
-    """五个工具通过注册列表交给 Agent。"""
+    """六个工具通过同一列表交给 Agent。"""
+    model = ToolCallingModel(responses=[AIMessage(content="done")])
+    with patch("lota.agent.create_agent") as create_agent:
+      build_agent(model)
     self.assertEqual(
-      {item.name for item in tools.TOOLS},
-      {"bash", "read_file", "write_file", "edit_file", "glob"},
+      [item.name for item in create_agent.call_args.kwargs["tools"]],
+      ["bash", "read_file", "write_file", "edit_file", "glob", "todo_write"],
     )
 
 
@@ -113,7 +116,9 @@ class AgentTest(unittest.TestCase):
       {"name": "bash", "args": {"command": "echo hello"}, "id": "bash-1"},
     ])
     model = ToolCallingModel(responses=[request, AIMessage(content="done")])
-    with patch("lota.tools.subprocess.run", side_effect=OSError("failed")):
+    with patch(
+      "lota.tools.shell.subprocess.run", side_effect=OSError("failed")
+    ):
       messages = self.run_agent(model, [])
     result = messages[1]
     self.assertIsInstance(result, ToolMessage)
@@ -169,7 +174,9 @@ class AgentTest(unittest.TestCase):
       {"name": "bash", "args": {"command": "echo hello"}, "id": "bash-1"},
     ])
     model = ToolCallingModel(responses=[request])
-    with patch("lota.tools.subprocess.run", side_effect=RuntimeError("bug")):
+    with patch(
+      "lota.tools.shell.subprocess.run", side_effect=RuntimeError("bug")
+    ):
       with self.assertRaisesRegex(RuntimeError, "bug"):
         self.run_agent(model, [])
 
@@ -202,7 +209,7 @@ class AgentTest(unittest.TestCase):
     with (
       patch("lota.main.build_model", return_value=model),
       patch("builtins.input", side_effect=["delete x", "n", "q"]),
-      patch("lota.tools.subprocess.run") as run,
+      patch("lota.tools.shell.subprocess.run") as run,
     ):
       main()
     run.assert_not_called()

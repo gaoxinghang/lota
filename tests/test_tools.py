@@ -6,7 +6,8 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
-from lota import tools
+from lota import workspace
+from lota.tools import files, shell
 
 
 class BashToolsTest(unittest.TestCase):
@@ -14,17 +15,17 @@ class BashToolsTest(unittest.TestCase):
 
   def test_os_error_propagates(self):
     """操作系统错误抛给调用方处理。"""
-    with patch("lota.tools.subprocess.run", side_effect=OSError("failed")):
+    with patch.object(subprocess, "run", side_effect=OSError("failed")):
       with self.assertRaisesRegex(OSError, "failed"):
-        tools.bash.invoke({"command": "echo hello"})
+        shell.bash.invoke({"command": "echo hello"})
 
 
   def test_timeout_returns_error(self):
     """超时仍返回错误字符串。"""
     error = subprocess.TimeoutExpired("echo hello", 120)
-    with patch("lota.tools.subprocess.run", side_effect=error):
+    with patch.object(subprocess, "run", side_effect=error):
       self.assertEqual(
-        tools.bash.invoke({"command": "echo hello"}),
+        shell.bash.invoke({"command": "echo hello"}),
         "Error: Timeout (120s)",
       )
 
@@ -41,22 +42,22 @@ class FileToolsTest(unittest.TestCase):
     self.workspace.mkdir()
     self.outside = root / "outside"
     self.outside.mkdir()
-    self.enterContext(patch.object(tools, "WORKDIR", self.workspace))
+    self.enterContext(patch.object(workspace, "WORKDIR", self.workspace))
 
 
   def test_write_and_read(self):
     """写入时创建父目录，支持中文与覆盖已有内容。"""
-    result = tools.write_file.invoke({
+    result = files.write_file.invoke({
       "path": "nested/demo.txt", "content": "你好\n世界",
     })
     self.assertEqual(result, "Wrote 5 characters to nested/demo.txt")
     self.assertEqual(
-      tools.read_file.invoke({"path": "nested/demo.txt"}), "你好\n世界"
+      files.read_file.invoke({"path": "nested/demo.txt"}), "你好\n世界"
     )
 
-    tools.write_file.invoke({"path": "nested/demo.txt", "content": ""})
+    files.write_file.invoke({"path": "nested/demo.txt", "content": ""})
     self.assertEqual(
-      tools.read_file.invoke({"path": "nested/demo.txt"}), ""
+      files.read_file.invoke({"path": "nested/demo.txt"}), ""
     )
 
 
@@ -72,25 +73,25 @@ class FileToolsTest(unittest.TestCase):
     ]:
       with self.subTest(limit=limit):
         self.assertEqual(
-          tools.read_file.invoke({"path": "demo.txt", "limit": limit}),
+          files.read_file.invoke({"path": "demo.txt", "limit": limit}),
           expected,
         )
 
     for limit in [0, -1]:
       with self.subTest(limit=limit), self.assertRaises(ValueError):
-        tools.read_file.invoke({"path": "demo.txt", "limit": limit})
+        files.read_file.invoke({"path": "demo.txt", "limit": limit})
 
 
   def test_edit_first_match(self):
     """编辑只替换第一处匹配，也允许删除文本。"""
     file_path = self.workspace / "demo.txt"
     file_path.write_text("hello hello", encoding="utf-8")
-    tools.edit_file.invoke({
+    files.edit_file.invoke({
       "path": "demo.txt", "old_text": "hello", "new_text": "你好",
     })
     self.assertEqual(file_path.read_text(encoding="utf-8"), "你好 hello")
 
-    tools.edit_file.invoke({
+    files.edit_file.invoke({
       "path": "demo.txt", "old_text": "你好 ", "new_text": "",
     })
     self.assertEqual(file_path.read_text(encoding="utf-8"), "hello")
@@ -103,7 +104,7 @@ class FileToolsTest(unittest.TestCase):
     for old_text in ["", "missing"]:
       with self.subTest(old_text=old_text):
         with self.assertRaises(ValueError):
-          tools.edit_file.invoke({
+          files.edit_file.invoke({
             "path": "demo.txt", "old_text": old_text, "new_text": "new",
           })
         self.assertEqual(file_path.read_text(encoding="utf-8"), "hello")
@@ -112,11 +113,11 @@ class FileToolsTest(unittest.TestCase):
   def test_missing_and_non_text_files(self):
     """不存在的文件与非 UTF-8 文件抛出可回传的错误。"""
     with self.assertRaises(FileNotFoundError):
-      tools.read_file.invoke({"path": "missing.txt"})
+      files.read_file.invoke({"path": "missing.txt"})
 
     (self.workspace / "binary").write_bytes(b"\xff")
     with self.assertRaises(UnicodeError):
-      tools.read_file.invoke({"path": "binary"})
+      files.read_file.invoke({"path": "binary"})
 
 
   def test_glob_outside_workspace(self):
@@ -128,7 +129,7 @@ class FileToolsTest(unittest.TestCase):
     )
     for path in ["../outside/demo.txt", str(target), "link/demo.txt"]:
       with self.subTest(path=path):
-        self.assertEqual(tools.glob.invoke({"pattern": path}), path)
+        self.assertEqual(files.glob.invoke({"pattern": path}), path)
     self.assertEqual(target.read_text(encoding="utf-8"), "unchanged")
 
 
@@ -139,7 +140,7 @@ class FileToolsTest(unittest.TestCase):
     (self.workspace / "link.txt").symlink_to(target)
     for path in [str(target), "link.txt"]:
       with self.subTest(path=path):
-        self.assertEqual(tools.read_file.invoke({"path": path}), "hello")
+        self.assertEqual(files.read_file.invoke({"path": path}), "hello")
 
 
   def test_glob_recursive(self):
@@ -151,11 +152,11 @@ class FileToolsTest(unittest.TestCase):
     outside_file.touch()
     (self.workspace / "outside.py").symlink_to(outside_file)
     self.assertEqual(
-      tools.glob.invoke({"pattern": "**/**/*.py"}),
+      files.glob.invoke({"pattern": "**/**/*.py"}),
       "a.py\nnested/b.py\noutside.py\nz.py",
     )
     self.assertEqual(
-      tools.glob.invoke({"pattern": "*.missing"}), "(no matches)"
+      files.glob.invoke({"pattern": "*.missing"}), "(no matches)"
     )
 
 
@@ -163,7 +164,7 @@ class FileToolsTest(unittest.TestCase):
     """匹配超过 200 条时截断并提示收窄模式。"""
     for index in range(201):
       (self.workspace / f"{index:03}.txt").touch()
-    lines = tools.glob.invoke({"pattern": "*.txt"}).splitlines()
+    lines = files.glob.invoke({"pattern": "*.txt"}).splitlines()
     self.assertEqual(len(lines), 201)
     self.assertEqual(lines[0], "000.txt")
     self.assertEqual(lines[199], "199.txt")

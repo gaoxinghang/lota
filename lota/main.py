@@ -28,11 +28,12 @@ def main() -> None:
     "Use tools to solve tasks. Prefer file tools for file operations. "
     "Do not ask for approval yourself. For destructive operations, "
     "still request the tool call; the harness will approve or deny "
-    "before execution."
+    "before execution. For multi-step tasks, plan with todo_write before "
+    "starting and update the plan as you go. For simple tasks, act directly."
   )
   history: list[BaseMessage] = [SystemMessage(content=system)]
 
-  print("lota · s03 permission —— 输入 q 退出\n")
+  print("lota · s05 TodoWrite —— 输入 q 退出\n")
   while True:
     try:
       query = input("lota › ").strip()

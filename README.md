@@ -1,16 +1,18 @@
 # lota
 
-用 LangChain 复刻隔壁 `learn-claude-code` 新版 s01–s03 的核心功能：
-五个工具，一个 LangChain Agent，一条执行前权限管线。
+用 LangChain 复刻隔壁 `learn-claude-code` 新版 s01–s03 的基础能力，
+并加入 s05 的 TODO 清单与进度提醒，不另造 s04 的 Hook 注册表。
 
 模型决定是否调用工具，`create_agent` 负责分发工具并回传结果；
-没有工具调用就结束本轮。权限检查通过 `wrap_tool_call` 中间件接入。
+没有工具调用就结束本轮。权限检查通过 `wrap_tool_call` 中间件接入，
+TODO 提醒通过 `wrap_model_call` 接入。
 
 ## 文件结构
 
 - `lota/model.py`：读取配置，通过 `init_chat_model` 创建模型。
-- `lota/tools.py`：用 `@tool` 定义 Shell 与文件工具，统一注册到 `TOOLS`。
-- `lota/permission.py`：权限规则、用户审批与工具调用中间件。
+- `lota/tools/`：Shell（`shell.py`）、文件（`files.py`）和清单（`todo.py`）工具。
+- `lota/middleware/`：权限审批（`permission.py`）和按批提醒（`todo_reminder.py`）。
+- `lota/workspace.py`：工具与权限检查共用的工作目录。
 - `lota/agent.py`：通过 `create_agent` 注册工具和中间件，配置串行执行。
 - `lota/main.py`：命令行交互，跨轮保留消息历史。
 
@@ -63,14 +65,15 @@ lota
                                              ├→ 允许 → 执行工具
                                              └→ 拒绝 → 不执行
                               追加工具结果 ←────┘
-                                   └→ 再问模型
+                                   └→ 检查 TODO 提醒 → 再问模型
 ```
 
-四个关键接口：
+关键接口：
 
 - `init_chat_model(...)`：创建模型，保留现有连接配置。
 - `create_agent(...)`：绑定工具，管理模型调用、工具分发及结果配对。
 - `wrap_tool_call`：执行前校验参数、检查权限，并保留错误回传和输出预览。
+- `wrap_model_call`：在完整一批工具结果返回后，按需给模型追加提醒。
 - `agent.invoke({"messages": history})`：运行一轮并返回完整消息历史。
 
 系统提示词放在第一条 `SystemMessage` 中；用户输入用 `HumanMessage`；
@@ -96,9 +99,9 @@ lota
 | `glob` | 按模式查找路径，支持 `**` 递归，最多返回 200 条 |
 
 `@tool` 从函数签名与文档字符串生成工具定义，不手写 JSON Schema。
-`TOOLS` 交给 `create_agent`，由框架完成工具查找和执行。
-新增工具只需定义函数并加入 `TOOLS`，无需修改 Agent 或中间件；
-有审批需求的工具还需在 `permission.py` 中添加对应规则。
+`lota/agent.py` 在 `build_agent()` 中把六个工具一起注册到 `create_agent`，
+其中 `todo_write` 绑定当前会话的独立清单。新增工具时，在 `lota/tools/` 定义后
+加入注册列表；有审批需求时，再到 `lota/middleware/permission.py` 添加规则。
 
 ## 权限管线（s03）
 
@@ -133,12 +136,25 @@ lota
 可在隔离环境中试用：创建工作区文件直接通过，删除文件触发审批，
 读取工作区外文件触发审批，调用 `sudo` 则直接拒绝。
 
+## TODO 清单（s05）
+
+多步骤任务先用 `todo_write` 列出计划，执行中更新进度；简单任务可直接执行。
+工具每次替换整张清单，空列表可清空。每项要有非空描述和状态：
+`pending`（待办）、`in_progress`（进行中）、`completed`（已完成）。
+最多 20 项、同时最多一项进行中。更新失败不覆盖旧清单。
+清单会打印到终端并返回给模型，保留在当前 Agent 实例中，退出不保存。
+
+一次模型回复里的多个工具调用只算一批。连续三批没有成功更新清单时，
+程序给第三批的最后一条工具结果附上提醒，每再过三批提醒一次。
+提醒只发给当次模型调用，不写入历史；成功更新或提交新问题会重新计数。
+
 ## 执行边界
 
 - Shell 命令在启动程序时的工作目录执行，每次启动独立子进程；
   单次命令中的 `cd` 不会改变后续调用的目录。
 - Shell 命令超时为 120 秒，回传输出最多 50000 字符。
-  文件读取默认不截断；所有工具的终端预览只显示前 200 字符。
+  文件读取默认不截断；工具结果预览只显示前 200 字符，
+  `todo_write` 另外打印完整清单。
 - 权限规则是教学示例，不是完整 Shell 解析器，会有误判和漏判；
   命令子串黑名单可以绕过，不构成可靠的命令安全检查。
 - 没有沙箱；框架步数上限设为 `sys.maxsize`，避免默认上限提前结束任务。
@@ -157,7 +173,8 @@ lota
 使用标准库 `unittest`，不调用模型 API；文件操作只在临时目录中进行。
 Shell 执行和用户输入均使用模拟，覆盖硬拒绝、单次审批、越界文件访问、
 参数校验和工具结果配对，不执行真实危险命令。
-Agent 集成测试还覆盖同批工具顺序、跨轮历史及拒绝审批后继续执行。
+Agent 集成测试还覆盖同批工具顺序、跨轮历史、拒绝审批后继续执行、
+清单校验和按批提醒。
 
 ```sh
 python -m unittest discover -s tests -v

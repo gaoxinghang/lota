@@ -6,7 +6,7 @@ from collections.abc import Callable
 from langchain.agents.middleware import ToolCallRequest, wrap_tool_call
 from langchain_core.messages import ToolMessage
 
-from lota import tools
+from lota import workspace
 
 DENY_LIST = [
   "rm -rf /", "sudo", "shutdown", "reboot", "mkfs", "dd if=", "> /dev/sda",
@@ -52,8 +52,8 @@ def check_rules(tool_name: str, args: dict) -> str | None:
     "glob": "pattern",
   }
   if tool_name in path_args:
-    path = (tools.WORKDIR / args[path_args[tool_name]]).resolve()
-    if not path.is_relative_to(tools.WORKDIR):
+    path = (workspace.WORKDIR / args[path_args[tool_name]]).resolve()
+    if not path.is_relative_to(workspace.WORKDIR):
       return "Access outside workspace"
 
   if tool_name == "bash":
@@ -146,4 +146,5 @@ def permission_middleware(
     content=output,
     tool_call_id=call["id"],
     name=call["name"],
+    status="error",
   )

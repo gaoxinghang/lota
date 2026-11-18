@@ -8,8 +8,10 @@ from unittest.mock import Mock, patch
 from langchain_core.messages import AIMessage, ToolMessage
 
 from fake_model import ToolCallingModel
-from lota import permission, tools
+from lota import workspace
 from lota.agent import build_agent
+from lota.middleware import permission
+from lota.tools import files, shell
 
 
 class PermissionTest(unittest.TestCase):
@@ -27,7 +29,7 @@ class PermissionTest(unittest.TestCase):
     (self.workspace / "link").symlink_to(
       self.outside, target_is_directory=True
     )
-    self.enterContext(patch.object(tools, "WORKDIR", self.workspace))
+    self.enterContext(patch.object(workspace, "WORKDIR", self.workspace))
     self.enterContext(patch("builtins.print"))
     self.input_mock = self.enterContext(patch(
       "builtins.input", side_effect=AssertionError("Unexpected approval")
@@ -81,7 +83,7 @@ class PermissionTest(unittest.TestCase):
 
   def test_hard_deny_never_prompts_or_executes(self):
     """硬拒绝优先于审批，所有拒绝项都不能启动子进程。"""
-    with patch("lota.tools.subprocess.run") as run:
+    with patch.object(shell.subprocess, "run") as run:
       for command in permission.DENY_LIST:
         with self.subTest(command=command):
           result = self.run_tool("bash", {"command": command})
@@ -124,7 +126,7 @@ class PermissionTest(unittest.TestCase):
 
   def test_interrupted_approval_denies(self):
     """模拟输入抛出 EOFError 或 KeyboardInterrupt 时拒绝执行。"""
-    with patch("lota.tools.subprocess.run") as run:
+    with patch.object(shell.subprocess, "run") as run:
       for error in [EOFError, KeyboardInterrupt]:
         with self.subTest(error=error), patch(
           "builtins.input", side_effect=error
@@ -137,7 +139,7 @@ class PermissionTest(unittest.TestCase):
   def test_shell_approval_is_per_call(self):
     """每次危险命令都审批，上次批准不影响下一次拒绝。"""
     with patch("builtins.input", side_effect=["yes", "n"]) as prompt:
-      with patch("lota.tools.subprocess.run") as run:
+      with patch.object(shell.subprocess, "run") as run:
         run.return_value = Mock(stdout="removed", stderr="")
         args = {"command": "rm file.txt"}
         self.assertEqual(self.run_tool("bash", args).content, "removed")
@@ -157,7 +159,7 @@ class PermissionTest(unittest.TestCase):
     model = ToolCallingModel(responses=[request, AIMessage(content="done")])
     with (
       patch("builtins.input", side_effect=["y", "n"]) as prompt,
-      patch("lota.tools.subprocess.run") as run,
+      patch.object(shell.subprocess, "run") as run,
     ):
       run.return_value = Mock(stdout="removed", stderr="")
       state = build_agent(model).invoke({"messages": []})
@@ -175,7 +177,7 @@ class PermissionTest(unittest.TestCase):
 
   def test_workspace_operations_do_not_prompt(self):
     """普通 Shell 和工作区内读写、内部链接、Glob 直接放行。"""
-    with patch("lota.tools.subprocess.run") as run:
+    with patch.object(shell.subprocess, "run") as run:
       run.return_value = Mock(stdout="hello", stderr="")
       self.assertEqual(
         self.run_tool("bash", {"command": "echo hello"}).content, "hello"
@@ -210,7 +212,7 @@ class PermissionTest(unittest.TestCase):
         for approved in [False, True]:
           with self.subTest(path=path, tool=name, approved=approved):
             target.write_text("unchanged", encoding="utf-8")
-            handler = getattr(tools, name)
+            handler = getattr(files, name)
             with (
               patch(
                 "builtins.input", return_value="y" if approved else "n"
@@ -251,7 +253,7 @@ class PermissionTest(unittest.TestCase):
             patch(
               "builtins.input", return_value="y" if approved else "n"
             ) as prompt,
-            patch("lota.tools.glob_paths", wraps=tools.glob_paths) as search,
+            patch.object(files, "glob_paths", wraps=files.glob_paths) as search,
           ):
             result = self.run_tool("glob", {"pattern": pattern})
             prompt.assert_called_once()
@@ -298,7 +300,7 @@ class PermissionTest(unittest.TestCase):
       ("write_file", {"path": "../outside/demo.txt"}),
       ("edit_file", {"path": "../outside/demo.txt", "old_text": "hello"}),
     ]
-    with patch("lota.tools.subprocess.run") as run:
+    with patch.object(shell.subprocess, "run") as run:
       for name, args in calls:
         with self.subTest(tool=name, args=args):
           self.assertTrue(
