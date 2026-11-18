@@ -68,7 +68,7 @@ class AgentTest(unittest.TestCase):
     self.assertEqual(len(model.calls), 1)
     system, *conversation = model.calls[0]
     self.assertIsInstance(system, SystemMessage)
-    self.assertIn("复杂任务", system.text)
+    self.assertIn("涉及多个步骤的任务，使用 `todo_write`。", system.text)
     self.assertEqual(conversation, history)
 
 
@@ -110,12 +110,17 @@ class AgentTest(unittest.TestCase):
       AIMessage(content="", tool_calls=[{
         "name": "read_file", "args": {"path": "demo.txt"}, "id": "read-1",
       }]),
+      AIMessage(content="", tool_calls=[{
+        "name": "glob",
+        "args": {"pattern": "*.txt"},
+        "id": "glob-1",
+      }]),
       AIMessage(content="done"),
     ])
     messages = self.run_agent(model, [HumanMessage(content="write then read")])
-    self.assertEqual(len(model.calls), 3)
+    self.assertEqual(len(model.calls), 4)
     self.assertEqual(model.calls[-1][1:], messages[:-1])
-    self.assertEqual(messages[-2].content, "hello")
+    self.assertEqual(messages[-2].content, "demo.txt")
     self.assertEqual(messages[-1].content, "done")
 
 

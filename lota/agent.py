@@ -7,7 +7,6 @@ from langchain_core.language_models import BaseChatModel
 from langgraph.graph.state import CompiledStateGraph
 
 from lota.middleware.permission import permission_middleware
-from lota.middleware.todo_reminder import todo_reminder
 from lota.middleware.tool_logging import tool_logging
 from lota.tools.files import edit_file, glob, read_file, write_file
 from lota.tools.shell import bash
@@ -33,12 +32,10 @@ def build_agent(model: BaseChatModel) -> CompiledStateGraph:
       "- `edit_file`：替换文件中第一处匹配的文本。\n"
       "- `glob`：按模式查找文件或目录。\n"
       "- `todo_write`：维护 TODO 清单。\n\n"
-      "复杂任务先用 `todo_write` 列出计划，执行中更新进度。"
-      "每连续三批工具调用未成功更新清单时，"
-      "系统会在该批最后一条工具结果末尾提醒你更新 TODO 清单。"
+      "涉及多个步骤的任务，使用 `todo_write`。"
     ),
     tools=[bash, read_file, write_file, edit_file, glob, build_todo_tool()],
-    middleware=[tool_logging, permission_middleware, todo_reminder],
+    middleware=[tool_logging, permission_middleware],
   ).with_config(
     max_concurrency=1,
     # 原循环没有次数限制，避免框架默认步数上限提前结束任务。

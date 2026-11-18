@@ -1,18 +1,16 @@
 # lota
 
 用 LangChain 复刻隔壁 `learn-claude-code` 新版 s01–s03 的基础能力，
-并加入 s05 的 TODO 清单与进度提醒，不另造 s04 的 Hook 注册表。
+并加入 s05 的 TODO 清单，不另造 s04 的 Hook 注册表。
 
 模型决定是否调用工具，`create_agent` 负责分发工具并回传结果；
-没有工具调用就结束本轮。工具日志和权限检查通过 `wrap_tool_call`
-中间件接入，TODO 提醒通过 `wrap_model_call` 接入。
+没有工具调用就结束本轮。工具日志和权限检查通过 `wrap_tool_call` 中间件接入。
 
 ## 文件结构
 
 - `lota/model.py`：读取配置，通过 `init_chat_model` 创建模型。
 - `lota/tools/`：Shell（`shell.py`）、文件（`files.py`）和清单（`todo.py`）工具。
-- `lota/middleware/`：工具日志（`tool_logging.py`）、权限审批（`permission.py`）
-  和按批提醒（`todo_reminder.py`）。
+- `lota/middleware/`：工具日志（`tool_logging.py`）和权限审批（`permission.py`）。
 - `lota/workspace.py`：工具与权限检查共用的工作目录。
 - `lota/agent.py`：通过 `create_agent` 注册工具和中间件，配置串行执行。
 - `lota/main.py`：命令行交互，跨轮保留消息历史。
@@ -66,7 +64,7 @@ lota
                                              ├→ 允许 → 执行工具
                                              └→ 拒绝 → 不执行
                               追加工具结果 ←────┘
-                                   └→ 检查 TODO 提醒 → 再问模型
+                                   └→ 再问模型
 ```
 
 关键接口：
@@ -75,7 +73,6 @@ lota
 - `create_agent(...)`：绑定工具，管理模型调用、工具分发及结果配对。
 - `wrap_tool_call`：日志中间件统一打印工具名、参数和结果预览；
   权限中间件校验参数、审批并回传错误。
-- `wrap_model_call`：在完整一批工具结果返回后，按需给模型追加提醒。
 - `agent.invoke({"messages": history})`：运行一轮并返回完整消息历史。
 
 中文系统提示词由 `create_agent(system_prompt=...)` 配置，不存入对话历史。
@@ -140,16 +137,12 @@ lota
 
 ## TODO 清单（s05）
 
-多步骤任务先用 `todo_write` 列出计划，执行中更新进度；简单任务可直接执行。
+系统提示词建议多步骤任务使用 `todo_write`，具体何时调用由模型决定。
 工具每次替换整张清单，空列表可清空。每项要有非空描述和状态：
 `pending`（待办）、`in_progress`（进行中）、`completed`（已完成）。
 最多 20 项、同时最多一项进行中。更新失败不覆盖旧清单。
 清单完整返回给模型，终端只显示统一的结果预览。
 清单保留在当前 Agent 实例中，退出不保存。
-
-一次模型回复里的多个工具调用只算一批。连续三批没有成功更新清单时，
-程序给第三批的最后一条工具结果附上提醒，每再过三批提醒一次。
-提醒只发给当次模型调用，不写入历史；成功更新或提交新问题会重新计数。
 
 ## 执行边界
 
@@ -176,7 +169,7 @@ lota
 Shell 执行和用户输入均使用模拟，覆盖硬拒绝、单次审批、越界文件访问、
 参数校验和工具结果配对，不执行真实危险命令。
 Agent 集成测试还覆盖同批工具顺序、跨轮历史、拒绝审批后继续执行、
-清单校验和按批提醒。
+清单校验和跨轮保留。
 
 ```sh
 python -m unittest discover -s tests -v
