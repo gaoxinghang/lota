@@ -48,20 +48,28 @@ class AgentTest(unittest.TestCase):
     model = ToolCallingModel(responses=[AIMessage(content="done")])
     with patch("lota.agent.create_agent") as create_agent:
       build_agent(model)
+    options = create_agent.call_args.kwargs
+    names = [item.name for item in options["tools"]]
     self.assertEqual(
-      [item.name for item in create_agent.call_args.kwargs["tools"]],
+      names,
       ["bash", "read_file", "write_file", "edit_file", "glob", "todo_write"],
     )
+    for name in names:
+      self.assertIn(f"`{name}`", options["system_prompt"])
 
 
   def test_no_tool_calls(self):
-    """没有工具调用时直接结束，保留系统提示和用户输入。"""
+    """没有工具调用时直接结束，系统提示仅发给模型，不进入历史。"""
     model = ToolCallingModel(responses=[AIMessage(content="done")])
-    history = [SystemMessage(content="system"), HumanMessage(content="hi")]
+    history = [HumanMessage(content="hi")]
     messages = self.run_agent(model, history)
     self.assertEqual(messages[:-1], history)
     self.assertEqual(messages[-1].content, "done")
-    self.assertEqual(model.calls, [history])
+    self.assertEqual(len(model.calls), 1)
+    system, *conversation = model.calls[0]
+    self.assertIsInstance(system, SystemMessage)
+    self.assertIn("复杂任务", system.text)
+    self.assertEqual(conversation, history)
 
 
   def test_dispatch_order_and_result_ids(self):
@@ -87,7 +95,8 @@ class AgentTest(unittest.TestCase):
       ],
     )
     self.assertEqual(len(model.calls), 2)
-    self.assertEqual(model.calls[-1], messages[:-1])
+    self.assertEqual(model.calls[-1][0], model.calls[0][0])
+    self.assertEqual(model.calls[-1][1:], messages[:-1])
 
 
   def test_multiple_tool_rounds(self):
@@ -105,7 +114,7 @@ class AgentTest(unittest.TestCase):
     ])
     messages = self.run_agent(model, [HumanMessage(content="write then read")])
     self.assertEqual(len(model.calls), 3)
-    self.assertEqual(model.calls[-1], messages[:-1])
+    self.assertEqual(model.calls[-1][1:], messages[:-1])
     self.assertEqual(messages[-2].content, "hello")
     self.assertEqual(messages[-1].content, "done")
 

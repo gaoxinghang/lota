@@ -1,8 +1,6 @@
 """入口：读一行，跑一轮，打印回复。"""
 
-import os
-
-from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
+from langchain_core.messages import BaseMessage, HumanMessage
 
 from lota.agent import build_agent
 from lota.model import build_model
@@ -21,17 +19,7 @@ def main() -> None:
     pass
 
   agent = build_agent(build_model())
-  shell = "cmd.exe" if os.name == "nt" else "the system shell"
-  system = (
-    f"You are a coding agent at {os.getcwd()}. "
-    f"The bash tool runs commands through {shell}. "
-    "Use tools to solve tasks. Prefer file tools for file operations. "
-    "Do not ask for approval yourself. For destructive operations, "
-    "still request the tool call; the harness will approve or deny "
-    "before execution. For multi-step tasks, plan with todo_write before "
-    "starting and update the plan as you go. For simple tasks, act directly."
-  )
-  history: list[BaseMessage] = [SystemMessage(content=system)]
+  history: list[BaseMessage] = []
 
   print("lota · s05 TodoWrite —— 输入 q 退出\n")
   while True:

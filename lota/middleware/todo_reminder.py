@@ -7,7 +7,7 @@ from langchain.agents.middleware import (
 )
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 
-REMINDER = "<reminder>Update your todos.</reminder>"
+REMINDER = "<reminder>请用 todo_write 更新 TODO 清单。</reminder>"
 
 
 @wrap_model_call
