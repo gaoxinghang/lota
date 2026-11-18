@@ -62,7 +62,7 @@ class PermissionTest(unittest.TestCase):
 
 
   def test_tool_call_logs_args_and_result_once(self):
-    """成功、拒绝和校验失败都统一记录，审批不重复打印参数。"""
+    """成功、拒绝和校验失败都统一记录工具日志。"""
     calls = [
       ("write_file", {"path": "demo.txt", "content": "你好\n" * 100}, []),
       ("todo_write", {"todos": []}, []),
@@ -137,7 +137,7 @@ class PermissionTest(unittest.TestCase):
         "builtins.input", return_value=choice
       ):
         self.assertEqual(
-          permission.ask_user("test"),
+          permission.ask_user("test", "test action"),
           choice.strip().lower() in {"y", "yes"},
         )
 

@@ -10,6 +10,7 @@ from lota.middleware.permission import permission_middleware
 from lota.middleware.tool_logging import tool_logging
 from lota.tools.files import edit_file, glob, read_file, write_file
 from lota.tools.shell import bash
+from lota.tools.subagent import build_subagent_tool
 from lota.tools.todo import build_todo_tool
 
 
@@ -22,6 +23,13 @@ def build_agent(model: BaseChatModel) -> CompiledStateGraph:
   Returns:
       带权限和计划中间件的 Agent，使用 invoke 调用。
   """
+  child_agent = create_agent(
+    model=model,
+    system_prompt="你是子 Agent。用可用工具完成子任务，只返回最终结论。",
+    tools=[bash, read_file, write_file, edit_file, glob, build_todo_tool()],
+    middleware=[permission_middleware],
+    checkpointer=False,
+  )
   return create_agent(
     model=model,
     system_prompt=(
@@ -31,10 +39,14 @@ def build_agent(model: BaseChatModel) -> CompiledStateGraph:
       "- `write_file`：写入或覆盖文本文件。\n"
       "- `edit_file`：替换文件中第一处匹配的文本。\n"
       "- `glob`：按模式查找文件或目录。\n"
-      "- `todo_write`：维护 TODO 清单。\n\n"
+      "- `todo_write`：维护 TODO 清单。\n"
+      "- `run_subagent`：委派独立的子任务，只返回结论。\n\n"
       "涉及多个步骤的任务，使用 `todo_write`。"
     ),
-    tools=[bash, read_file, write_file, edit_file, glob, build_todo_tool()],
+    tools=[
+      bash, read_file, write_file, edit_file, glob, build_todo_tool(),
+      build_subagent_tool(child_agent),
+    ],
     middleware=[tool_logging, permission_middleware],
   ).with_config(
     max_concurrency=1,

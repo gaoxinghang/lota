@@ -23,7 +23,7 @@ class AgentTest(unittest.TestCase):
     temporary = self.enterContext(TemporaryDirectory())
     self.workspace = Path(temporary).resolve()
     self.enterContext(patch.object(workspace, "WORKDIR", self.workspace))
-    self.enterContext(patch("builtins.print"))
+    self.print_log = self.enterContext(patch("builtins.print"))
     self.enterContext(patch(
       "builtins.input", side_effect=AssertionError("Unexpected approval")
     ))
@@ -44,18 +44,77 @@ class AgentTest(unittest.TestCase):
 
 
   def test_registered_tools(self):
-    """六个工具通过同一列表交给 Agent。"""
+    """父子都注册基础工具和独立清单，只有父 Agent 能委派。"""
     model = ToolCallingModel(responses=[AIMessage(content="done")])
     with patch("lota.agent.create_agent") as create_agent:
       build_agent(model)
-    options = create_agent.call_args.kwargs
-    names = [item.name for item in options["tools"]]
+    child_call, parent_call = create_agent.call_args_list
+    child_tools = {item.name: item for item in child_call.kwargs["tools"]}
+    parent_tools = {item.name: item for item in parent_call.kwargs["tools"]}
+    child_names = [
+      "bash", "read_file", "write_file", "edit_file", "glob", "todo_write",
+    ]
+    self.assertEqual(list(child_tools), child_names)
+    self.assertEqual(list(parent_tools), [*child_names, "run_subagent"])
+    self.assertIsNot(child_tools["todo_write"], parent_tools["todo_write"])
+    for name in parent_tools:
+      self.assertIn(f"`{name}`", parent_call.kwargs["system_prompt"])
+
+
+  def test_subagent_isolates_messages_and_checks_permission(self):
+    """子 Agent 可写入工作区，越界读取仍审批，只向父 Agent 返回结论。"""
+    outside = Path(self.enterContext(TemporaryDirectory())).resolve()
+    target = outside / "demo.txt"
+    target.write_text("outside", encoding="utf-8")
+    model = ToolCallingModel(responses=[
+      AIMessage(content="", tool_calls=[{
+        "name": "run_subagent",
+        "args": {"prompt": "调查文件"},
+        "id": "sub-1",
+      }]),
+      AIMessage(content="", tool_calls=[
+        {
+          "name": "write_file",
+          "args": {"path": "sub.txt", "content": "子任务"},
+          "id": "write-1",
+        },
+        {
+          "name": "read_file",
+          "args": {"path": str(target)},
+          "id": "read-1",
+        },
+      ]),
+      AIMessage(content="无法读取"),
+      AIMessage(content="父 Agent 结束"),
+    ])
+    with patch("builtins.input", return_value="n") as approve:
+      messages = self.run_agent(model, [HumanMessage(content="父任务")])
+
+    approve.assert_called_once()
+    self.assertIn("read_file", approve.call_args.args[0])
+    self.assertIn(str(target), approve.call_args.args[0])
     self.assertEqual(
-      names,
-      ["bash", "read_file", "write_file", "edit_file", "glob", "todo_write"],
+      (self.workspace / "sub.txt").read_text(encoding="utf-8"), "子任务"
     )
-    for name in names:
-      self.assertIn(f"`{name}`", options["system_prompt"])
+    child_prompt, = model.calls[1][1:]
+    self.assertIsInstance(child_prompt, HumanMessage)
+    self.assertEqual(child_prompt.content, "调查文件")
+    self.assertIsInstance(model.calls[2][-1], ToolMessage)
+    self.assertEqual(model.calls[2][-1].content, "Permission denied.")
+    results = [item for item in messages if isinstance(item, ToolMessage)]
+    self.assertEqual(
+      [(item.name, item.tool_call_id, item.content) for item in results],
+      [("run_subagent", "sub-1", "无法读取")],
+    )
+    self.assertEqual(messages[-1].content, "父 Agent 结束")
+
+    output = [entry.args[0] for entry in self.print_log.call_args_list]
+    self.assertEqual(output, [
+      "\033[33m> run_subagent\033[0m",
+      "\033[32m   Args: {'prompt': '调查文件'}\033[0m",
+      "\n[permission] Access outside workspace",
+      "\033[90m无法读取\033[0m",
+    ])
 
 
   def test_no_tool_calls(self):

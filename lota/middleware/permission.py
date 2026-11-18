@@ -65,18 +65,19 @@ def check_rules(tool_name: str, args: dict) -> str | None:
   return None
 
 
-def ask_user(reason: str) -> bool:
-  """展示审批原因并询问用户，仅明确输入 y 或 yes 时批准。
+def ask_user(reason: str, action: str) -> bool:
+  """展示审批原因和待执行操作，仅明确输入 y 或 yes 时批准。
 
   Args:
       reason: 需要审批的原因。
+      action: 待审批的工具名与参数。
 
   Returns:
       用户批准时返回 True；其他输入或捕获到输入中断时返回 False。
   """
   print(f"\n[permission] {reason}")
   try:
-    choice = input("   Allow? [y/N] ").strip().lower()
+    choice = input(f"   {action}\n   Allow? [y/N] ").strip().lower()
   except (EOFError, KeyboardInterrupt):
     print()
     return False
@@ -105,7 +106,7 @@ def check_permission(tool_name: str, args: dict) -> bool:
 
   reason = check_rules(tool_name, args)
   if reason:
-    return ask_user(reason)
+    return ask_user(reason, f"{tool_name} {args!r}")
   return True
 
 

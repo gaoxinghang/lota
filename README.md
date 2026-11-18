@@ -1,7 +1,7 @@
 # lota
 
 用 LangChain 复刻隔壁 `learn-claude-code` 新版 s01–s03 的基础能力，
-并加入 s05 的 TODO 清单，不另造 s04 的 Hook 注册表。
+并加入 s05 的 TODO 清单和 s06 的子 Agent，不另造 s04 的 Hook 注册表。
 
 模型决定是否调用工具，`create_agent` 负责分发工具并回传结果；
 没有工具调用就结束本轮。工具日志和权限检查通过 `wrap_tool_call` 中间件接入。
@@ -9,7 +9,8 @@
 ## 文件结构
 
 - `lota/model.py`：读取配置，通过 `init_chat_model` 创建模型。
-- `lota/tools/`：Shell（`shell.py`）、文件（`files.py`）和清单（`todo.py`）工具。
+- `lota/tools/`：Shell（`shell.py`）、文件（`files.py`）、清单（`todo.py`）
+  和子 Agent（`subagent.py`）工具。
 - `lota/middleware/`：工具日志（`tool_logging.py`）和权限审批（`permission.py`）。
 - `lota/workspace.py`：工具与权限检查共用的工作目录。
 - `lota/agent.py`：通过 `create_agent` 注册工具和中间件，配置串行执行。
@@ -71,7 +72,7 @@ lota
 
 - `init_chat_model(...)`：创建模型，保留现有连接配置。
 - `create_agent(...)`：绑定工具，管理模型调用、工具分发及结果配对。
-- `wrap_tool_call`：日志中间件统一打印工具名、参数和结果预览；
+- `wrap_tool_call`：日志中间件只为父 Agent 打印工具名、参数和结果预览；
   权限中间件校验参数、审批并回传错误。
 - `agent.invoke({"messages": history})`：运行一轮并返回完整消息历史。
 
@@ -98,14 +99,14 @@ lota
 | `glob` | 按模式查找路径，支持 `**` 递归，最多返回 200 条 |
 
 `@tool` 从函数签名与文档字符串生成工具定义，不手写 JSON Schema。
-`lota/agent.py` 在 `build_agent()` 中把六个工具一起注册到 `create_agent`，
+`lota/agent.py` 在 `build_agent()` 中注册父 Agent 的工具，
 其中 `todo_write` 绑定当前会话的独立清单。新增工具时，在 `lota/tools/` 定义后
 加入注册列表；有审批需求时，再到 `lota/middleware/permission.py` 添加规则。
 
 ## 权限管线（s03）
 
-日志中间件先打印工具名和完整参数。工具参数通过 LangChain 工具 Schema
-校验后，再进入三道闸门：
+父 Agent 的日志中间件先打印工具名和完整参数。父子 Agent 的工具参数都要通过
+LangChain 工具 Schema 校验，再进入三道闸门：
 
 | 闸门 | 匹配条件 | 行为 |
 | --- | --- | --- |
@@ -144,6 +145,15 @@ lota
 清单完整返回给模型，终端只显示统一的结果预览。
 清单保留在当前 Agent 实例中，退出不保存。
 
+## 子 Agent（s06）
+
+`run_subagent(prompt)` 同步委派子任务。每次调用从一条新消息开始，
+不接收父对话历史；父 Agent 只收到最终文本，不收到子工具调用和结果。
+子 Agent 可使用父 Agent 除 `run_subagent` 外的全部工具，共享工作区和审批规则。
+父子各自维护 TODO 清单，子清单保留在同一个子 Agent 实例中。
+子 Agent 不打印工具日志；工具结果仍回传给子模型，权限提示照常显示。
+子 Agent 最多执行 30 个 LangGraph 图步，达到上限时向父 Agent 返回错误提示。
+
 ## 执行边界
 
 - Shell 命令在启动程序时的工作目录执行，每次启动独立子进程；
@@ -152,8 +162,8 @@ lota
   文件读取默认不截断；工具结果预览只显示前 200 字符，不影响回传给模型的内容。
 - 权限规则是教学示例，不是完整 Shell 解析器，会有误判和漏判；
   命令子串黑名单可以绕过，不构成可靠的命令安全检查。
-- 没有沙箱；框架步数上限设为 `sys.maxsize`，避免默认上限提前结束任务。
-  未添加业务调用次数限制，超时与截断不是安全边界。
+- 没有沙箱；父 Agent 的框架步数上限设为 `sys.maxsize`，
+  避免默认上限提前结束任务。超时与截断不是安全边界。
 - Glob 只检查模式路径，不逐个检查展开后的匹配项；通配符可能匹配到
   外部符号链接，递归搜索也可能沿链接访问工作区外，且不会因此额外审批。
 - 文件路径检查不能防止检查后路径被替换，Bash 也不受路径规则限制。
