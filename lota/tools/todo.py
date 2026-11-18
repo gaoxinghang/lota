@@ -46,9 +46,7 @@ class TodoManager:
       raise ValueError("Only one todo can be in_progress at a time")
 
     self._items = todos
-    output = self.render()
-    print(f"\n## Current Tasks\n{output}")
-    return output
+    return self.render()
 
 
   def render(self) -> str:

@@ -65,19 +65,16 @@ def check_rules(tool_name: str, args: dict) -> str | None:
   return None
 
 
-def ask_user(tool_name: str, args: dict, reason: str) -> bool:
-  """展示完整调用并询问用户，仅明确输入 y 或 yes 时批准。
+def ask_user(reason: str) -> bool:
+  """展示审批原因并询问用户，仅明确输入 y 或 yes 时批准。
 
   Args:
-      tool_name: 待执行的工具名称。
-      args: 本次调用参数。
       reason: 需要审批的原因。
 
   Returns:
       用户批准时返回 True；其他输入或捕获到输入中断时返回 False。
   """
   print(f"\n[permission] {reason}")
-  print(f"   Tool: {tool_name}({args!r})")
   try:
     choice = input("   Allow? [y/N] ").strip().lower()
   except (EOFError, KeyboardInterrupt):
@@ -108,7 +105,7 @@ def check_permission(tool_name: str, args: dict) -> bool:
 
   reason = check_rules(tool_name, args)
   if reason:
-    return ask_user(tool_name, args, reason)
+    return ask_user(reason)
   return True
 
 
@@ -117,7 +114,7 @@ def permission_middleware(
   request: ToolCallRequest,
   handler: Callable[[ToolCallRequest], ToolMessage],
 ) -> ToolMessage:
-  """校验工具参数并审批，保留错误回传与终端预览。
+  """校验工具参数并审批，将拒绝或错误回传给模型。
 
   Args:
       request: Agent 提供的工具调用及对应工具。
@@ -127,21 +124,16 @@ def permission_middleware(
       执行结果、拒绝信息或可回传的错误，均与原调用 ID 配对。
   """
   call = request.tool_call
-  print(f"\033[33m> {call['name']}\033[0m")
-  print(f"\033[32m   Args: {call['args']!r}\033[0m")
   try:
     if request.tool is None:
       raise ValueError(f"Unknown tool: {call['name']}")
     request.tool.get_input_schema().model_validate(call["args"])
     if check_permission(call["name"], call["args"]):
-      result = handler(request)
-      print(f"\033[90m{result.content[:200]}\033[0m")
-      return result
+      return handler(request)
     output = "Permission denied."
   except (OSError, ValueError) as exc:
     output = f"Error: {exc}"
 
-  print(f"\033[90m{output[:200]}\033[0m")
   return ToolMessage(
     content=output,
     tool_call_id=call["id"],

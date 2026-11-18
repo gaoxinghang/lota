@@ -61,24 +61,42 @@ class PermissionTest(unittest.TestCase):
     return result
 
 
-  def test_tool_call_prints_args_before_result(self):
-    """正常、拒绝及参数错误均按黄、绿、灰打印名称、参数和结果。"""
+  def test_tool_call_logs_args_and_result_once(self):
+    """成功、拒绝和校验失败都统一记录，审批不重复打印参数。"""
     calls = [
-      ("write_file", {
-        "path": "demo.txt", "content": "你好\n" * 100,
-      }),
-      ("bash", {"command": "sudo ls"}),
-      ("read_file", {}),
+      ("write_file", {"path": "demo.txt", "content": "你好\n" * 100}, []),
+      ("todo_write", {"todos": []}, []),
+      ("bash", {"command": "sudo ls"}, [
+        "\n[blocked] Blocked: 'sudo' is on the deny list",
+      ]),
+      ("bash", {"command": "rm x"}, [
+        "\n[permission] Potentially destructive command",
+      ]),
+      ("read_file", {}, []),
     ]
-    for name, args in calls:
-      with self.subTest(tool=name), patch("builtins.print") as output:
+    for name, args, notices in calls:
+      with (
+        self.subTest(tool=name, args=args),
+        patch("builtins.input", return_value="n"),
+        patch("builtins.print") as output,
+      ):
         result = self.run_tool(name, args)
-      printed = [item.args[0] for item in output.call_args_list]
-      self.assertEqual(printed[0], f"\033[33m> {name}\033[0m")
-      self.assertEqual(printed[1], f"\033[32m   Args: {args!r}\033[0m")
-      self.assertEqual(
-        printed[-1], f"\033[90m{result.content[:200]}\033[0m"
-      )
+        self.assertEqual([item.args[0] for item in output.call_args_list], [
+          f"\033[33m> {name}\033[0m",
+          f"\033[32m   Args: {args!r}\033[0m",
+          *notices,
+          f"\033[90m{result.text[:200]}\033[0m",
+        ])
+
+
+  def test_tool_log_preview_does_not_truncate_result(self):
+    """终端只预览 200 字符，工具仍返回完整内容。"""
+    content = "你" * 201
+    (self.workspace / "demo.txt").write_text(content, encoding="utf-8")
+    with patch("builtins.print") as output:
+      result = self.run_tool("read_file", {"path": "demo.txt"})
+    self.assertEqual(result.content, content)
+    self.assertEqual(output.call_args.args, (f"\033[90m{content[:200]}\033[0m",))
 
 
   def test_hard_deny_never_prompts_or_executes(self):
@@ -119,7 +137,7 @@ class PermissionTest(unittest.TestCase):
         "builtins.input", return_value=choice
       ):
         self.assertEqual(
-          permission.ask_user("bash", {"command": "rm x"}, "test"),
+          permission.ask_user("test"),
           choice.strip().lower() in {"y", "yes"},
         )
 

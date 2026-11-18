@@ -8,6 +8,7 @@ from langgraph.graph.state import CompiledStateGraph
 
 from lota.middleware.permission import permission_middleware
 from lota.middleware.todo_reminder import todo_reminder
+from lota.middleware.tool_logging import tool_logging
 from lota.tools.files import edit_file, glob, read_file, write_file
 from lota.tools.shell import bash
 from lota.tools.todo import build_todo_tool
@@ -25,7 +26,7 @@ def build_agent(model: BaseChatModel) -> CompiledStateGraph:
   return create_agent(
     model=model,
     tools=[bash, read_file, write_file, edit_file, glob, build_todo_tool()],
-    middleware=[permission_middleware, todo_reminder],
+    middleware=[tool_logging, permission_middleware, todo_reminder],
   ).with_config(
     max_concurrency=1,
     # 原循环没有次数限制，避免框架默认步数上限提前结束任务。
