@@ -1,4 +1,4 @@
-"""创建带权限检查和会话计划的 LangChain Agent。"""
+"""创建带权限检查、会话计划和按需技能加载的 LangChain Agent。"""
 
 import sys
 
@@ -6,10 +6,12 @@ from langchain.agents import create_agent
 from langchain_core.language_models import BaseChatModel
 from langgraph.graph.state import CompiledStateGraph
 
+from lota import workspace
 from lota.middleware.permission import permission_middleware
 from lota.middleware.tool_logging import tool_logging
 from lota.tools.files import edit_file, glob, read_file, write_file
 from lota.tools.shell import bash
+from lota.tools.skills import build_skill_tool
 from lota.tools.subagent import build_subagent_tool
 from lota.tools.todo import build_todo_tool
 
@@ -21,12 +23,20 @@ def build_agent(model: BaseChatModel) -> CompiledStateGraph:
       model: 尚未绑定工具的聊天模型。
 
   Returns:
-      带权限和计划中间件的 Agent，使用 invoke 调用。
+      带权限检查、计划和技能工具的 Agent，使用 invoke 调用。
   """
+  base_tools = [bash, read_file, write_file, edit_file, glob]
+  skill_tool, skill_prompt = build_skill_tool(workspace.WORKDIR)
+  if skill_tool is not None:
+    base_tools.append(skill_tool)
+
   child_agent = create_agent(
     model=model,
-    system_prompt="你是子 Agent。用可用工具完成子任务，只返回最终结论。",
-    tools=[bash, read_file, write_file, edit_file, glob, build_todo_tool()],
+    system_prompt=(
+      "你是子 Agent。用可用工具完成子任务，只返回最终结论。"
+      + skill_prompt
+    ),
+    tools=[*base_tools, build_todo_tool()],
     middleware=[permission_middleware],
     checkpointer=False,
   )
@@ -42,11 +52,9 @@ def build_agent(model: BaseChatModel) -> CompiledStateGraph:
       "- `todo_write`：维护 TODO 清单。\n"
       "- `run_subagent`：委派独立的子任务，只返回结论。\n\n"
       "涉及多个步骤的任务，使用 `todo_write`。"
+      + skill_prompt
     ),
-    tools=[
-      bash, read_file, write_file, edit_file, glob, build_todo_tool(),
-      build_subagent_tool(child_agent),
-    ],
+    tools=[*base_tools, build_todo_tool(), build_subagent_tool(child_agent)],
     middleware=[tool_logging, permission_middleware],
   ).with_config(
     max_concurrency=1,

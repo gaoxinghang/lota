@@ -1,7 +1,8 @@
 # lota
 
 用 LangChain 复刻隔壁 `learn-claude-code` 新版 s01–s03 的基础能力，
-并加入 s05 的 TODO 清单和 s06 的子 Agent，不另造 s04 的 Hook 注册表。
+并加入 s05 的 TODO 清单、s06 的子 Agent 和 s07 的按需技能加载，
+不另造 s04 的 Hook 注册表。
 
 模型决定是否调用工具，`create_agent` 负责分发工具并回传结果；
 没有工具调用就结束本轮。工具日志和权限检查通过 `wrap_tool_call` 中间件接入。
@@ -9,8 +10,8 @@
 ## 文件结构
 
 - `lota/model.py`：读取配置，通过 `init_chat_model` 创建模型。
-- `lota/tools/`：Shell（`shell.py`）、文件（`files.py`）、清单（`todo.py`）
-  和子 Agent（`subagent.py`）工具。
+- `lota/tools/`：Shell（`shell.py`）、文件（`files.py`）、清单（`todo.py`）、
+  子 Agent（`subagent.py`）和技能（`skills.py`）工具。
 - `lota/middleware/`：工具日志（`tool_logging.py`）和权限审批（`permission.py`）。
 - `lota/workspace.py`：工具与权限检查共用的工作目录。
 - `lota/agent.py`：通过 `create_agent` 注册工具和中间件，配置串行执行。
@@ -154,6 +155,32 @@ LangChain 工具 Schema 校验，再进入三道闸门：
 子 Agent 不打印工具日志；工具结果仍回传给子模型，权限提示照常显示。
 子 Agent 最多执行 30 个 LangGraph 图步，达到上限时向父 Agent 返回错误提示。
 
+## 技能加载（s07）
+
+在工作区的 `skills/<技能目录>/SKILL.md` 放置 UTF-8 Markdown，
+开头用 YAML 头部声明非空的 `name` 和 `description`：
+
+```markdown
+---
+name: code-review
+description: 审查代码改动并找出回归风险。
+---
+
+# 代码审查
+
+先确认改动目标，再检查行为变化和测试覆盖。
+```
+
+启动时读取并缓存技能文件，但父子 Agent 的系统提示只包含名称和简介。
+模型调用 `load_skill(name)` 后，完整的 `SKILL.md` 才作为工具结果进入
+当前对话。子 Agent 不继承父对话，需要时自行加载。没有可用技能时不注册该工具；
+无效文件和指向技能目录外的文件会跳过，同名技能按路径排序只保留第一份并发出警告。
+修改技能后需要重启 CLI。
+
+可以在本仓库启动 `lota`，输入「请先加载 code-review 技能，再审查当前改动」。
+加载只返回文本，不执行脚本。简介和加载后的正文会发送给模型，
+请只使用可信的技能文件，不要在技能里放凭据等敏感信息。
+
 ## 执行边界
 
 - Shell 命令在启动程序时的工作目录执行，每次启动独立子进程；
@@ -179,7 +206,7 @@ LangChain 工具 Schema 校验，再进入三道闸门：
 Shell 执行和用户输入均使用模拟，覆盖硬拒绝、单次审批、越界文件访问、
 参数校验和工具结果配对，不执行真实危险命令。
 Agent 集成测试还覆盖同批工具顺序、跨轮历史、拒绝审批后继续执行、
-清单校验和跨轮保留。
+清单校验和跨轮保留，以及技能目录和按需加载。
 
 ```sh
 python -m unittest discover -s tests -v

@@ -61,6 +61,82 @@ class AgentTest(unittest.TestCase):
       self.assertIn(f"`{name}`", parent_call.kwargs["system_prompt"])
 
 
+  def write_review_skill(self) -> str:
+    """写入供集成测试使用的代码审查技能并返回全文。"""
+    manifest = self.workspace / "skills" / "review" / "SKILL.md"
+    manifest.parent.mkdir(parents=True)
+    content = "---\nname: review\ndescription: 审查代码\n---\n\n# 审查正文\n"
+    manifest.write_text(content, encoding="utf-8")
+    return content
+
+
+  def test_skill_catalog_and_results(self):
+    """首轮只发目录，工具加载正文，路径形状的名称按未知技能处理。"""
+    content = self.write_review_skill()
+    request = AIMessage(content="", tool_calls=[
+      {
+        "name": "load_skill",
+        "args": {"name": "review"},
+        "id": "skill-1",
+      },
+      {
+        "name": "load_skill",
+        "args": {"name": "skills/review/SKILL.md"},
+        "id": "skill-2",
+      },
+    ])
+    model = ToolCallingModel(responses=[request, AIMessage(content="done")])
+    messages = self.run_agent(model, [HumanMessage(content="审查")])
+
+    system = model.calls[0][0]
+    self.assertIn("- review: 审查代码", system.text)
+    self.assertIn("`load_skill`", system.text)
+    self.assertNotIn("# 审查正文", system.text)
+
+    loaded, unknown = [
+      item for item in messages if isinstance(item, ToolMessage)
+    ]
+    self.assertEqual((loaded.tool_call_id, loaded.content), ("skill-1", content))
+    self.assertIn(loaded, model.calls[1])
+    self.assertEqual((unknown.tool_call_id, unknown.status), ("skill-2", "error"))
+    self.assertIn("Unknown skill", unknown.text)
+    self.assertIn("Available: review", unknown.text)
+    self.assertNotIn("# 审查正文", unknown.text)
+
+
+  def test_subagent_loads_skill_in_own_context(self):
+    """子 Agent 共享技能目录，加载结果不直接进入父对话。"""
+    content = self.write_review_skill()
+    model = ToolCallingModel(responses=[
+      AIMessage(content="", tool_calls=[{
+        "name": "run_subagent",
+        "args": {"prompt": "审查代码"},
+        "id": "sub-1",
+      }]),
+      AIMessage(content="", tool_calls=[{
+        "name": "load_skill",
+        "args": {"name": "review"},
+        "id": "skill-1",
+      }]),
+      AIMessage(content="子任务结论"),
+      AIMessage(content="done"),
+    ])
+    messages = self.run_agent(model, [HumanMessage(content="委派审查")])
+
+    system, prompt = model.calls[1]
+    self.assertIn("- review: 审查代码", system.text)
+    self.assertNotIn("# 审查正文", system.text)
+    self.assertIsInstance(prompt, HumanMessage)
+    self.assertEqual(prompt.content, "审查代码")
+    self.assertIsInstance(model.calls[2][-1], ToolMessage)
+    self.assertEqual(model.calls[2][-1].content, content)
+    results = [item for item in messages if isinstance(item, ToolMessage)]
+    self.assertEqual(
+      [(item.name, item.tool_call_id, item.content) for item in results],
+      [("run_subagent", "sub-1", "子任务结论")],
+    )
+
+
   def test_subagent_isolates_messages_and_checks_permission(self):
     """子 Agent 可写入工作区，越界读取仍审批，只向父 Agent 返回结论。"""
     outside = Path(self.enterContext(TemporaryDirectory())).resolve()
