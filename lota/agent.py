@@ -9,6 +9,7 @@ from langgraph.graph.state import CompiledStateGraph
 from lota import workspace
 from lota.middleware.permission import permission_middleware
 from lota.middleware.tool_logging import tool_logging
+from lota.middleware.tool_result_budget import tool_result_budget
 from lota.tools.files import edit_file, glob, read_file, write_file
 from lota.tools.shell import bash
 from lota.tools.skills import build_skill_tool
@@ -37,7 +38,7 @@ def build_agent(model: BaseChatModel) -> CompiledStateGraph:
       + skill_prompt
     ),
     tools=[*base_tools, build_todo_tool()],
-    middleware=[permission_middleware],
+    middleware=[permission_middleware, tool_result_budget],
     checkpointer=False,
   )
   return create_agent(
@@ -55,7 +56,7 @@ def build_agent(model: BaseChatModel) -> CompiledStateGraph:
       + skill_prompt
     ),
     tools=[*base_tools, build_todo_tool(), build_subagent_tool(child_agent)],
-    middleware=[tool_logging, permission_middleware],
+    middleware=[tool_logging, permission_middleware, tool_result_budget],
   ).with_config(
     max_concurrency=1,
     # 原循环没有次数限制，避免框架默认步数上限提前结束任务。
