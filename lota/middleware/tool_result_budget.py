@@ -12,9 +12,10 @@ from lota import workspace
 TOOL_RESULT_BATCH_CHAR_LIMIT = 200_000
 LARGE_RESULT_CHAR_LIMIT = 30_000
 PREVIEW_CHAR_LIMIT = 2_000
+PERSISTED_RESULT_PATH_KEY = "lota_persisted_result_path"
 
 
-def _persist_result(output: str) -> Path:
+def persist_result(output: str) -> Path:
   """将完整文本写入工作区，返回用于工具读取的相对路径。
 
   Args:
@@ -71,12 +72,17 @@ def tool_result_budget(
     if len(output) <= LARGE_RESULT_CHAR_LIMIT:
       break
 
-    path = _persist_result(output)
+    path = persist_result(output)
     preview = (
       f"<persisted-output>\nFull output: {path}\n"
       f"Preview:\n{output[:PREVIEW_CHAR_LIMIT]}\n</persisted-output>"
     )
-    updates.append(message.model_copy(update={"content": preview}))
+    updates.append(message.model_copy(update={
+      "content": preview,
+      "additional_kwargs": message.additional_kwargs | {
+        PERSISTED_RESULT_PATH_KEY: str(path),
+      },
+    }))
     total += len(preview) - len(output)
 
   return {"messages": updates} if updates else None

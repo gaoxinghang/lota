@@ -7,6 +7,7 @@ from langchain_core.language_models import BaseChatModel
 from langgraph.graph.state import CompiledStateGraph
 
 from lota import workspace
+from lota.middleware.micro_compact import micro_compact
 from lota.middleware.permission import permission_middleware
 from lota.middleware.snip_compact import snip_compact
 from lota.middleware.tool_logging import tool_logging
@@ -39,7 +40,9 @@ def build_agent(model: BaseChatModel) -> CompiledStateGraph:
       + skill_prompt
     ),
     tools=[*base_tools, build_todo_tool()],
-    middleware=[permission_middleware, tool_result_budget, snip_compact],
+    middleware=[
+      permission_middleware, tool_result_budget, snip_compact, micro_compact,
+    ],
     checkpointer=False,
   )
   return create_agent(
@@ -58,7 +61,8 @@ def build_agent(model: BaseChatModel) -> CompiledStateGraph:
     ),
     tools=[*base_tools, build_todo_tool(), build_subagent_tool(child_agent)],
     middleware=[
-      tool_logging, permission_middleware, tool_result_budget, snip_compact,
+      tool_logging, permission_middleware, tool_result_budget,
+      snip_compact, micro_compact,
     ],
   ).with_config(
     max_concurrency=1,
