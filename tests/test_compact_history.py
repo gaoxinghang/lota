@@ -27,15 +27,14 @@ class CompactHistoryTest(unittest.TestCase):
     self.enterContext(patch("builtins.print"))
 
 
-  def test_fourth_step_has_its_own_node(self):
-    """确认微压缩、摘要和正常模型调用是连续的独立节点。"""
+  def test_four_steps_share_one_node(self):
+    """确认正常模型调用前只经过一个压缩节点。"""
     model = ToolCallingModel(responses=[AIMessage(content="完成")])
     graph = build_agent(model).get_graph()
+    nodes = {name for name in graph.nodes if name.endswith(".before_model")}
+    self.assertEqual(nodes, {"context_compact.before_model"})
     edges = {(edge.source, edge.target) for edge in graph.edges}
-    self.assertIn((
-      "micro_compact.before_model", "compact_history.before_model",
-    ), edges)
-    self.assertIn(("compact_history.before_model", "model"), edges)
+    self.assertIn(("context_compact.before_model", "model"), edges)
 
 
   def test_summarizes_oversized_history_and_keeps_current_request(self):

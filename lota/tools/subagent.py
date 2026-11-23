@@ -36,8 +36,7 @@ def build_subagent_tool(child_agent: CompiledStateGraph) -> BaseTool:
     try:
       result = child_agent.invoke(
         {"messages": [HumanMessage(content=prompt)]},
-        # 独立的第四步在每次模型调用前再占一个图步。
-        config={"max_concurrency": 1, "recursion_limit": 44},
+        config={"max_concurrency": 1, "recursion_limit": 22},
       )
     except GraphRecursionError:
       return "Error: Subagent reached its step limit."

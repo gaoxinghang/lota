@@ -23,7 +23,7 @@ class ToolResultBudgetTest(unittest.TestCase):
     self.enterContext(patch.object(workspace, "WORKDIR", self.workdir))
     self.enterContext(patch("builtins.print"))
     self.enterContext(patch(
-      "lota.middleware.compact_history.CONTEXT_CHAR_LIMIT", float("inf"),
+      "lota.middleware.context_compact._compact_history", return_value=None,
     ))
 
 
