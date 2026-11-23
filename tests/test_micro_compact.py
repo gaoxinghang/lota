@@ -22,6 +22,9 @@ class MicroCompactTest(unittest.TestCase):
     self.output_dir = self.workdir / ".task_outputs" / "tool-results"
     self.enterContext(patch.object(workspace, "WORKDIR", self.workdir))
     self.enterContext(patch("builtins.print"))
+    self.enterContext(patch(
+      "lota.middleware.compact_history.CONTEXT_CHAR_LIMIT", float("inf"),
+    ))
 
 
   def read_batch(self, outputs):

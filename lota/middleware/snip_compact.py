@@ -19,7 +19,7 @@ KEEP_HEAD_MESSAGES = 3
 ARCHIVED_REQUEST_KEY = "lota_archived_request"
 
 
-def _write_transcript(messages: list[BaseMessage]) -> Path:
+def write_transcript(messages: list[BaseMessage]) -> Path:
   """将裁剪前的消息保存为可由 LangChain 还原的 JSONL。
 
   Args:
@@ -101,7 +101,7 @@ def snip_compact(
     return None
 
   request = _request_in_middle(messages, head_end, tail_start)
-  path = _write_transcript(messages)
+  path = write_transcript(messages)
   notice = f"[已归档 {removed} 条消息，完整记录：{path}]"
   if request is not None:
     notice += f"\n\n当前用户请求：\n{request}"
