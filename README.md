@@ -15,6 +15,7 @@
   子 Agent（`subagent.py`）和技能（`skills.py`）工具。
 - `lota/middleware/`：工具日志、权限审批和上下文压缩。
 - `lota/workspace.py`：工具与权限检查共用的工作目录。
+- `lota/memory.py`：s09 的本地记忆存储，尚未接入 Agent。
 - `lota/agent.py`：通过 `create_agent` 注册工具和中间件，配置串行执行。
 - `lota/main.py`：命令行交互，跨轮保留消息历史。
 
