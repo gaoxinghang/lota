@@ -21,7 +21,7 @@ def main() -> None:
   agent = build_agent(build_model())
   history: list[BaseMessage] = []
 
-  print("lota · 命令行编程助手 —— 输入 q 退出\n")
+  print("lota · 你的 AI 助理 —— 输入 q 退出\n")
   while True:
     try:
       query = input("lota › ").strip()
