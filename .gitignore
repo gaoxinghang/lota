@@ -15,6 +15,7 @@ dist/
 /.transcripts/
 /.memory/
 /.memory-stage-*/
+/.tasks/
 /assets
 
 ##################################################

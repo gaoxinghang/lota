@@ -56,9 +56,51 @@ class AgentTest(unittest.TestCase):
       child_tools, ["bash", "read_file", "write_file", "edit_file", "glob"],
     )
     self.assertEqual(child_call.kwargs["middleware"], [permission_middleware])
-    self.assertEqual(parent_tools, [*child_tools, "todo_write", "run_subagent"])
+    self.assertEqual(parent_tools, [
+      *child_tools, "todo_write", "run_subagent", "create_task", "update_task",
+      "list_tasks", "get_task", "claim_task", "complete_task",
+    ])
     for name in parent_tools:
       self.assertIn(f"`{name}`", parent_call.kwargs["system_prompt"])
+
+
+  def test_task_tools_create_then_link_and_reject_blocked_claim(self):
+    """父 Agent 用创建结果的 ID 建立依赖，认领失败后继续处理工具。"""
+    schema = "task_deadbeef"
+    api = "task_cafebabe"
+    model = ToolCallingModel(responses=[
+      AIMessage(content="", tool_calls=[
+        {"name": "create_task", "args": {"subject": "设计"}, "id": "create-1"},
+        {"name": "create_task", "args": {"subject": "实现"}, "id": "create-2"},
+      ]),
+      AIMessage(content="", tool_calls=[{
+        "name": "update_task",
+        "args": {"task_id": api, "add_blocked_by": [schema]},
+        "id": "link-1",
+      }]),
+      AIMessage(content="", tool_calls=[
+        {"name": "claim_task", "args": {"task_id": api}, "id": "claim-1"},
+        {"name": "list_tasks", "args": {}, "id": "list-1"},
+      ]),
+      AIMessage(content="done"),
+    ])
+    history = [HumanMessage(content="建立持久化任务")]
+    with patch(
+      "lota.tools.tasks.token_hex", side_effect=["deadbeef", "cafebabe"],
+    ):
+      messages = self.run_agent(model, history)
+
+    results = {
+      item.tool_call_id: item for item in messages if isinstance(item, ToolMessage)
+    }
+    self.assertEqual(results["create-1"].content, f"Created {schema}: 设计")
+    self.assertEqual(results["create-2"].content, f"Created {api}: 实现")
+    self.assertIn(results["create-1"], model.calls[1])
+    self.assertEqual(results["link-1"].status, "success")
+    self.assertEqual(results["claim-1"].status, "error")
+    self.assertIn(f"Blocked by: {schema}", results["claim-1"].text)
+    self.assertIn(f"blocked_by: {schema}", results["list-1"].text)
+    self.assertEqual(messages[-1].content, "done")
 
 
   def write_review_skill(self) -> str:
@@ -197,7 +239,7 @@ class AgentTest(unittest.TestCase):
     self.assertEqual(len(model.calls), 1)
     system, *conversation = model.calls[0]
     self.assertIsInstance(system, SystemMessage)
-    self.assertIn("涉及多个步骤的任务，使用 `todo_write`。", system.text)
+    self.assertIn("当前会话的多步骤计划用 `todo_write`。", system.text)
     self.assertEqual(conversation, history)
 
 

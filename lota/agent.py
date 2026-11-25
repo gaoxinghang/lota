@@ -1,4 +1,4 @@
-"""创建带权限检查、会话计划和按需技能加载的 LangChain Agent。"""
+"""组装 LangChain Agent 的工具和中间件。"""
 
 import sys
 
@@ -15,6 +15,7 @@ from lota.tools.files import edit_file, glob, read_file, write_file
 from lota.tools.shell import bash
 from lota.tools.skills import build_skill_tool
 from lota.tools.subagent import build_subagent_tool
+from lota.tools.tasks import build_task_tools
 from lota.tools.todo import build_todo_tool
 
 
@@ -40,7 +41,11 @@ def build_agent(model: BaseChatModel) -> CompiledStateGraph:
   skill_tool, skill_prompt = build_skill_tool(workspace.WORKDIR)
   if skill_tool is not None:
     parent_tools.append(skill_tool)
-  parent_tools.extend([build_todo_tool(), build_subagent_tool(child_agent)])
+  parent_tools.extend([
+    build_todo_tool(),
+    build_subagent_tool(child_agent),
+    *build_task_tools(workspace.WORKDIR),
+  ])
 
   return create_agent(
     model=model,
@@ -57,7 +62,11 @@ def build_agent(model: BaseChatModel) -> CompiledStateGraph:
       "- `glob`：按模式查找文件或目录。\n"
       "- `todo_write`：维护 TODO 清单。\n"
       "- `run_subagent`：委派独立的子任务，只返回结论。\n\n"
-      "涉及多个步骤的任务，使用 `todo_write`。"
+      "当前会话的多步骤计划用 `todo_write`。需要跨会话跟踪或管理依赖时，"
+      "用 `create_task` 先创建各任务，拿到真实 ID 后，再用 `update_task` "
+      "添加前置任务。恢复时用 `list_tasks` 查看进度、"
+      "用 `get_task` 查看详情。开始待办任务前先用 `claim_task` 认领，"
+      "确认做完后再用 `complete_task` 标记完成。"
       + skill_prompt
     ),
     tools=parent_tools,
