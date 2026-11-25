@@ -7,7 +7,7 @@ from langchain_core.messages import AIMessage, BaseMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
 from pydantic import Field
 
-from lota.middleware.memory import EXTRACTION_SYSTEM
+from lota.middleware.memory.extraction import EXTRACTION_SYSTEM
 
 
 class ToolCallingModel(FakeMessagesListChatModel):
