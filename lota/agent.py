@@ -8,6 +8,7 @@ from langgraph.graph.state import CompiledStateGraph
 
 from lota import workspace
 from lota.middleware.context_compact import build_context_compact
+from lota.middleware.memory import MemoryMiddleware
 from lota.middleware.permission import permission_middleware
 from lota.middleware.tool_logging import tool_logging
 from lota.tools.files import edit_file, glob, read_file, write_file
@@ -57,7 +58,10 @@ def build_agent(model: BaseChatModel) -> CompiledStateGraph:
       + skill_prompt
     ),
     tools=[*base_tools, build_todo_tool(), build_subagent_tool(child_agent)],
-    middleware=[tool_logging, permission_middleware, context_compact],
+    middleware=[
+      tool_logging, permission_middleware, context_compact,
+      MemoryMiddleware(model, workspace.WORKDIR),
+    ],
   ).with_config(
     max_concurrency=1,
     # 原循环没有次数限制，避免框架默认步数上限提前结束任务。

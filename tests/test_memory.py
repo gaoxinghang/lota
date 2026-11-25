@@ -6,7 +6,7 @@ from tempfile import TemporaryDirectory
 
 from pydantic import ValidationError
 
-from lota.memory import MemoryRecord, MemoryStore
+from lota.middleware.memory import MemoryRecord, MemoryStore
 
 
 class MemoryStoreTest(unittest.TestCase):
@@ -18,7 +18,7 @@ class MemoryStoreTest(unittest.TestCase):
     self.root = self.workdir / ".memory"
     self.store = MemoryStore(self.workdir)
     self.record = MemoryRecord(
-      name="Python Style",
+      name="Python_Style2",
       description="缩进偏好",
       type="user",
       body="使用 2 个空格。\n\n---\n\n适用于 Python。",
@@ -30,9 +30,9 @@ class MemoryStoreTest(unittest.TestCase):
     self.assertFalse(self.root.exists())
     path = self.store.save(self.record)
 
-    self.assertEqual(path, self.root / "python-style.md")
+    self.assertEqual(path, self.root / "python_style2.md")
     self.assertEqual(path.read_text(encoding="utf-8"), (
-      "---\nname: Python Style\ndescription: 缩进偏好\ntype: user\n---\n\n"
+      "---\nname: Python_Style2\ndescription: 缩进偏好\ntype: user\n---\n\n"
       "使用 2 个空格。\n\n---\n\n适用于 Python。\n"
     ))
     self.assertEqual(MemoryStore(self.workdir).read(path.name), self.record)
@@ -42,13 +42,13 @@ class MemoryStoreTest(unittest.TestCase):
     """索引按文件名排序，可重建且不包含正文。"""
     self.store.save(self.record)
     self.store.save(MemoryRecord(
-      name="Agent docs", description="项目文档\n入口", type="reference",
+      name="Agent_docs", description="项目文档\n入口", type="reference",
       body="README.md",
     ))
     index = self.root / "MEMORY.md"
     expected = (
-      "- [Agent docs](agent-docs.md) - 项目文档 入口\n"
-      "- [Python Style](python-style.md) - 缩进偏好\n"
+      "- [Agent_docs](agent_docs.md) - 项目文档 入口\n"
+      "- [Python_Style2](python_style2.md) - 缩进偏好\n"
     )
     self.assertEqual(index.read_text(encoding="utf-8"), expected)
 
@@ -62,7 +62,7 @@ class MemoryStoreTest(unittest.TestCase):
     path = self.store.save(self.record)
     with self.assertRaises(FileExistsError):
       self.store.save(MemoryRecord(
-        name="python-style", description="新说明", type="user",
+        name="python_style2", description="新说明", type="user",
         body="新正文",
       ))
     self.assertEqual(self.store.read(path.name), self.record)
@@ -73,6 +73,13 @@ class MemoryStoreTest(unittest.TestCase):
       ))
     with self.assertRaises(ValueError):
       self.store.read("MEMORY.md")
+
+
+  def test_name_only_accepts_ascii_letters_digits_and_underscores(self):
+    """不接受中文、空白、连字符和需要转义的符号。"""
+    for name in ("", "中文", "two words", " x ", "x\n", "x-y", "[x]", r"a\b"):
+      with self.subTest(name=name), self.assertRaises(ValidationError):
+        MemoryRecord(name=name, description="简介", type="user", body="正文")
 
 
   def test_invalid_record_is_rejected(self):
@@ -92,7 +99,7 @@ class MemoryStoreTest(unittest.TestCase):
     outside = Path(self.enterContext(TemporaryDirectory())) / "outside.md"
     outside.write_text("保持原样", encoding="utf-8")
     self.root.mkdir()
-    link = self.root / "python-style.md"
+    link = self.root / "python_style2.md"
     link.symlink_to(outside)
 
     for filename in ("../outside.md", str(outside)):
@@ -120,7 +127,7 @@ class MemoryStoreTest(unittest.TestCase):
     self.root.rmdir()
     self.root.symlink_to(outside, target_is_directory=True)
     with self.assertRaises(PermissionError):
-      self.store.read("python-style.md")
+      self.store.read("python_style2.md")
     with self.assertRaises(PermissionError):
       self.store.save(self.record)
     self.assertEqual(list(outside.iterdir()), [external_index])
