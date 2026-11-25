@@ -13,6 +13,7 @@ from fake_model import ToolCallingModel
 from lota import workspace
 from lota.agent import build_agent
 from lota.main import main
+from lota.middleware.permission import permission_middleware
 
 
 class AgentTest(unittest.TestCase):
@@ -44,19 +45,18 @@ class AgentTest(unittest.TestCase):
 
 
   def test_registered_tools(self):
-    """父子都注册基础工具和独立清单，只有父 Agent 能委派。"""
+    """子 Agent 只注册基础工具和权限中间件。"""
     model = ToolCallingModel(responses=[AIMessage(content="done")])
     with patch("lota.agent.create_agent") as create_agent:
       build_agent(model)
     child_call, parent_call = create_agent.call_args_list
-    child_tools = {item.name: item for item in child_call.kwargs["tools"]}
-    parent_tools = {item.name: item for item in parent_call.kwargs["tools"]}
-    child_names = [
-      "bash", "read_file", "write_file", "edit_file", "glob", "todo_write",
-    ]
-    self.assertEqual(list(child_tools), child_names)
-    self.assertEqual(list(parent_tools), [*child_names, "run_subagent"])
-    self.assertIsNot(child_tools["todo_write"], parent_tools["todo_write"])
+    child_tools = [item.name for item in child_call.kwargs["tools"]]
+    parent_tools = [item.name for item in parent_call.kwargs["tools"]]
+    self.assertEqual(
+      child_tools, ["bash", "read_file", "write_file", "edit_file", "glob"],
+    )
+    self.assertEqual(child_call.kwargs["middleware"], [permission_middleware])
+    self.assertEqual(parent_tools, [*child_tools, "todo_write", "run_subagent"])
     for name in parent_tools:
       self.assertIn(f"`{name}`", parent_call.kwargs["system_prompt"])
 
@@ -104,19 +104,14 @@ class AgentTest(unittest.TestCase):
     self.assertNotIn("# 审查正文", unknown.text)
 
 
-  def test_subagent_loads_skill_in_own_context(self):
-    """子 Agent 共享技能目录，加载结果不直接进入父对话。"""
-    content = self.write_review_skill()
+  def test_subagent_does_not_receive_skill_catalog(self):
+    """只有父 Agent 收到技能目录，子 Agent 只收到委派消息。"""
+    self.write_review_skill()
     model = ToolCallingModel(responses=[
       AIMessage(content="", tool_calls=[{
         "name": "run_subagent",
         "args": {"prompt": "审查代码"},
         "id": "sub-1",
-      }]),
-      AIMessage(content="", tool_calls=[{
-        "name": "load_skill",
-        "args": {"name": "review"},
-        "id": "skill-1",
       }]),
       AIMessage(content="子任务结论"),
       AIMessage(content="done"),
@@ -124,12 +119,11 @@ class AgentTest(unittest.TestCase):
     messages = self.run_agent(model, [HumanMessage(content="委派审查")])
 
     system, prompt = model.calls[1]
-    self.assertIn("- review: 审查代码", system.text)
-    self.assertNotIn("# 审查正文", system.text)
+    self.assertIn("- review: 审查代码", model.calls[0][0].text)
+    self.assertNotIn("- review: 审查代码", system.text)
+    self.assertNotIn("load_skill", system.text)
     self.assertIsInstance(prompt, HumanMessage)
     self.assertEqual(prompt.content, "审查代码")
-    self.assertIsInstance(model.calls[2][-1], ToolMessage)
-    self.assertEqual(model.calls[2][-1].content, content)
     results = [item for item in messages if isinstance(item, ToolMessage)]
     self.assertEqual(
       [(item.name, item.tool_call_id, item.content) for item in results],

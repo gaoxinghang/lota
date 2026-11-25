@@ -1,12 +1,15 @@
 """验证 TODO 清单更新和跨轮状态。"""
 
 import unittest
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.tools import tool
 
 from fake_model import ToolCallingModel
+from lota import workspace
 from lota.agent import build_agent
 from lota.tools.todo import TodoManager
 
@@ -15,7 +18,9 @@ class TodoTest(unittest.TestCase):
   """验证清单校验和会话内状态。"""
 
   def setUp(self):
-    """不打印工具日志或进入审批。"""
+    """隔离工作区，不打印工具日志或进入审批。"""
+    workdir = Path(self.enterContext(TemporaryDirectory())).resolve()
+    self.enterContext(patch.object(workspace, "WORKDIR", workdir))
     self.enterContext(patch("builtins.print"))
     self.enterContext(patch(
       "builtins.input", side_effect=AssertionError("Unexpected approval")

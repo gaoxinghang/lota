@@ -104,8 +104,8 @@ class ToolResultBudgetTest(unittest.TestCase):
     self.assertFalse(self.output_dir.exists())
 
 
-  def test_subagent_applies_its_own_batch_budget(self):
-    """子 Agent 也转存大结果，父 Agent 仍只收到子任务结论。"""
+  def test_subagent_does_not_apply_batch_budget(self):
+    """子 Agent 不转存大结果，父 Agent 仍只收到子任务结论。"""
     output = "子" * 200_001
     model = ToolCallingModel(responses=[
       AIMessage(content="", tool_calls=[{
@@ -117,11 +117,10 @@ class ToolResultBudgetTest(unittest.TestCase):
     ])
     build_agent(model).invoke({"messages": [HumanMessage(content="委派任务")]})
 
-    saved, = self.output_dir.iterdir()
-    self.assertEqual(saved.read_text(encoding="utf-8"), output)
+    self.assertFalse(self.output_dir.exists())
     child_result = model.calls[2][-1]
     self.assertEqual(child_result.tool_call_id, "child-0")
-    self.assertIn(str(saved.relative_to(self.workdir)), child_result.content)
+    self.assertEqual(child_result.content, output)
     parent_result = model.calls[3][-1]
     self.assertEqual(parent_result.tool_call_id, "delegate")
     self.assertEqual(parent_result.content, "child done")

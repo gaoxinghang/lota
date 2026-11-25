@@ -140,8 +140,8 @@ class SnipCompactTest(unittest.TestCase):
     self.assertEqual(archived["content"], model.calls[-1][-1].content)
 
 
-  def test_subagent_compacts_without_exposing_its_history_to_parent(self):
-    """子任务达到阈值会归档，但父 Agent 只收到最终文本。"""
+  def test_subagent_keeps_history_without_exposing_it_to_parent(self):
+    """子任务达到阈值不归档，父 Agent 仍只收到最终文本。"""
     delegate = AIMessage(content="", tool_calls=[{
       "name": "run_subagent", "args": {"prompt": "子任务"}, "id": "delegate",
     }])
@@ -151,10 +151,9 @@ class SnipCompactTest(unittest.TestCase):
       AIMessage(content="子任务完成"),
     )
 
-    saved, = self.transcripts.glob("*.jsonl")
+    self.assertFalse(self.transcripts.exists())
     visible = model.calls[-2][1:]
-    self.assertLess(len(visible), 50)
-    self.assertTrue(any(saved.name in message.text for message in visible))
+    self.assertGreaterEqual(len(visible), 50)
     parent_result = model.calls[-1][-1]
     self.assertEqual(parent_result.tool_call_id, "delegate")
     self.assertEqual(parent_result.content, "子任务完成")

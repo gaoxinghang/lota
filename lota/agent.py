@@ -28,21 +28,20 @@ def build_agent(model: BaseChatModel) -> CompiledStateGraph:
       带权限检查、计划和技能工具的 Agent，使用 invoke 调用。
   """
   base_tools = [bash, read_file, write_file, edit_file, glob]
-  skill_tool, skill_prompt = build_skill_tool(workspace.WORKDIR)
-  if skill_tool is not None:
-    base_tools.append(skill_tool)
-
-  context_compact = build_context_compact(model)
   child_agent = create_agent(
     model=model,
-    system_prompt=(
-      "你是子 Agent。用可用工具完成子任务，只返回最终结论。"
-      + skill_prompt
-    ),
-    tools=[*base_tools, build_todo_tool()],
-    middleware=[permission_middleware, context_compact],
+    system_prompt="你是子 Agent。用可用工具完成子任务，只返回最终结论。",
+    tools=base_tools,
+    middleware=[permission_middleware],
     checkpointer=False,
   )
+
+  parent_tools = base_tools.copy()
+  skill_tool, skill_prompt = build_skill_tool(workspace.WORKDIR)
+  if skill_tool is not None:
+    parent_tools.append(skill_tool)
+  parent_tools.extend([build_todo_tool(), build_subagent_tool(child_agent)])
+
   return create_agent(
     model=model,
     system_prompt=(
@@ -57,9 +56,9 @@ def build_agent(model: BaseChatModel) -> CompiledStateGraph:
       "涉及多个步骤的任务，使用 `todo_write`。"
       + skill_prompt
     ),
-    tools=[*base_tools, build_todo_tool(), build_subagent_tool(child_agent)],
+    tools=parent_tools,
     middleware=[
-      tool_logging, permission_middleware, context_compact,
+      tool_logging, permission_middleware, build_context_compact(model),
       MemoryMiddleware(model, workspace.WORKDIR),
     ],
   ).with_config(

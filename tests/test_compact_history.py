@@ -121,8 +121,8 @@ class CompactHistoryTest(unittest.TestCase):
     self.assertTrue(any(output in p.read_text(encoding="utf-8") for p in files))
 
 
-  def test_child_uses_its_own_summary(self):
-    """子 Agent 可独立归档，父 Agent 只收到任务结论。"""
+  def test_child_does_not_summarize_history(self):
+    """子 Agent 不生成历史摘要，父 Agent 只收到任务结论。"""
     (self.workdir / "file.txt").write_text("子" * 55_000, encoding="utf-8")
     model = ToolCallingModel(responses=[
       AIMessage(content="", tool_calls=[{
@@ -131,15 +131,14 @@ class CompactHistoryTest(unittest.TestCase):
       AIMessage(content="", tool_calls=[{
         "name": "read_file", "args": {"path": "file.txt"}, "id": "read",
       }]),
-      AIMessage(content="已读取文件"), AIMessage(content="子任务完成"),
-      AIMessage(content="父任务完成"),
+      AIMessage(content="子任务完成"), AIMessage(content="父任务完成"),
     ])
     build_agent(model).invoke({"messages": [HumanMessage(content="父任务")]})
 
-    self.assertEqual(len(model.calls), 5)
-    self.assertIn("当前用户请求：\n读取文件", model.calls[3][-1].text)
-    self.assertEqual(model.calls[4][-1].text, "子任务完成")
-    self.assertEqual(len(list(self.transcripts.glob("*.jsonl"))), 1)
+    self.assertEqual(len(model.calls), 4)
+    self.assertEqual(model.calls[2][-1].text, "子" * 55_000)
+    self.assertEqual(model.calls[3][-1].text, "子任务完成")
+    self.assertFalse(self.transcripts.exists())
 
 
   def test_empty_summary_keeps_messages(self):
