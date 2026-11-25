@@ -332,6 +332,7 @@ class AgentTest(unittest.TestCase):
     with (
       patch("lota.main.build_model", return_value=model),
       patch("builtins.input", side_effect=["", "first", "second", "q"]),
+      patch("lota.main.speak"),
     ):
       main()
     self.assertEqual(len(model.calls), 2)
@@ -340,6 +341,33 @@ class AgentTest(unittest.TestCase):
       [item.content for item in model.calls[1][1:]],
       ["first", "first reply", "second"],
     )
+
+
+  def test_main_voice_reads_only_final_replies_and_recovers(self):
+    """只播报最终回复，播报失败后继续对话。"""
+    model = ToolCallingModel(responses=[
+      AIMessage(content="", tool_calls=[{
+        "name": "glob", "args": {"pattern": "*.missing"}, "id": "lookup",
+      }]),
+      AIMessage(content="第一次回复"),
+      AIMessage(content="第二次回复"),
+    ])
+    with (
+      patch("lota.main.build_model", return_value=model),
+      patch("builtins.input", side_effect=["first", "second", "q"]),
+      patch("lota.main.speak", side_effect=[RuntimeError("离线"), None])
+      as speak,
+    ):
+      main()
+
+    self.assertEqual(
+      [entry.args for entry in speak.call_args_list],
+      [("第一次回复",), ("第二次回复",)],
+    )
+    output = [entry.args[0] for entry in self.print_log.call_args_list]
+    self.assertIn("\n第一次回复\n", output)
+    self.assertIn("[voice] 播报失败：离线", output)
+    self.assertIn("\n第二次回复\n", output)
 
 
   def test_main_denied_approval_continues(self):
@@ -353,6 +381,7 @@ class AgentTest(unittest.TestCase):
       patch("lota.main.build_model", return_value=model),
       patch("builtins.input", side_effect=["delete x", "n", "q"]),
       patch("lota.tools.shell.subprocess.run") as run,
+      patch("lota.main.speak"),
     ):
       main()
     run.assert_not_called()

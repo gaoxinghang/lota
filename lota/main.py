@@ -1,9 +1,13 @@
-"""入口：读一行，跑一轮，打印回复。"""
+"""入口：读取输入、运行 Agent，显示并播报回复。"""
+
+from contextlib import redirect_stdout
+from io import StringIO
 
 from langchain_core.messages import BaseMessage, HumanMessage
 
 from lota.agent import build_agent
 from lota.model import build_model
+from lota.voice import speak
 
 
 def main() -> None:
@@ -36,7 +40,16 @@ def main() -> None:
     history.append(HumanMessage(content=query))
     result = agent.invoke({"messages": history})
     history = result["messages"]
-    print(f"\n{history[-1].text}\n")
+    reply = history[-1].text
+    print(f"\n{reply}\n", flush=True)
+    if reply.strip():
+      try:
+        with redirect_stdout(StringIO()):
+          speak(reply)
+      except KeyboardInterrupt:
+        print("[voice] 播报已停止")
+      except Exception as exc:
+        print(f"[voice] 播报失败：{exc}")
 
 
 if __name__ == "__main__":

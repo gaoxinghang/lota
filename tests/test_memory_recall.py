@@ -173,6 +173,7 @@ class MemoryRecallTest(unittest.TestCase):
       patch("lota.main.build_model", return_value=model),
       patch("builtins.input", side_effect=["看看缩进", "另一题", "q"]),
       patch("builtins.print"),
+      patch("lota.main.speak"),
     ):
       main()
 

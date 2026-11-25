@@ -18,6 +18,7 @@
 - `lota/middleware/memory/`：s09 的记忆存储、召回、提取和整理。
 - `lota/agent.py`：通过 `create_agent` 注册工具和中间件，配置串行执行。
 - `lota/main.py`：命令行交互，跨轮保留消息历史。
+- `lota/voice.py`：用 Breeze TTS 2 在本机播报最终回复。
 
 建议按以上顺序阅读。
 
@@ -59,6 +60,25 @@ lota
 输入 `q`、`exit`，或在主输入提示处按 Ctrl-C / Ctrl-D 退出。
 权限审批提示处只有 `y` / `yes`（不区分大小写）允许执行；
 其他输入或 Ctrl-D 均拒绝本次调用；审批处 Ctrl-C 不保证只拒绝本次调用。
+
+## 本地语音播报
+
+Apple Silicon Mac 可在同一个 Python 环境中安装语音依赖：
+
+```sh
+python -m pip install -e '.[voice]'
+```
+
+在项目的 `.env` 中填写 `LOTA_VOICE_REFERENCE`（本地参考 WAV 路径，
+支持 `~`）和 `LOTA_VOICE_TRANSCRIPT`（参考音频的逐字台词）。
+直接运行 `lota` 即可播报，不需要启动参数。
+
+Breeze TTS 2 的 MLX 4-bit 权重首次使用时可能需要从 Hugging Face 下载。
+之后在本机合成，参考音频不会作为语音请求发送到云端。模型在第一次
+播报时加载，后续复用。每轮先显示完整文字回复，再边合成边播放，
+不等整段音频生成完，也不播工具日志或审批提示。按 Ctrl-C 可停止播报，
+播报失败也不影响文字对话。
+模型权重仅限研究和非商业用途。
 
 ## 核心流程
 

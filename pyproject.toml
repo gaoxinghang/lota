@@ -20,6 +20,15 @@ dynamic = ["dependencies"]
 lota = "lota.main:main"
 
 ##################################################
+# 可选语音依赖
+##################################################
+[project.optional-dependencies]
+voice = [
+  """mlx-audio[tts]>=0.6.8,<0.7; \
+  sys_platform == 'darwin' and platform_machine == 'arm64'""",
+]
+
+##################################################
 # 包发现与依赖
 ##################################################
 [tool.setuptools.packages.find]
