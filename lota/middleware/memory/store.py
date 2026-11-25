@@ -173,7 +173,9 @@ class MemoryStore:
 
 
   def rebuild_index(self) -> None:
-    """按文件名排序，从记录生成索引，不修改记录本身。
+    """按创建时间从早到晚生成索引，不修改记忆正文。
+
+    文件系统不提供创建时间时，用修改时间代替。
 
     Raises:
         ValueError: 记录格式无效。
@@ -183,16 +185,21 @@ class MemoryStore:
     index = self._path(INDEX_NAME)
     self._root.mkdir(exist_ok=True)
     rows = []
-    for path in sorted(self._root.glob("*.md")):
+    for path in self._root.glob("*.md"):
       if path.name.lower() == INDEX_NAME.lower():
         continue
       record = self.read(path.name)
       description = " ".join(record.description.split())
-      rows.append(f"- [{record.name}]({path.name}) - {description}\n")
+      info = path.lstat()
+      created_at = getattr(info, "st_birthtime", info.st_mtime)
+      row = f"- [{record.name}]({path.name}) - {description}\n"
+      rows.append((created_at, path.name, row))
 
     with TemporaryDirectory(dir=self._root) as directory:
       staged = Path(directory) / INDEX_NAME
-      staged.write_text("".join(rows), encoding="utf-8")
+      staged.write_text(
+        "".join(row for _, _, row in sorted(rows)), encoding="utf-8",
+      )
       staged.replace(index)
 
 

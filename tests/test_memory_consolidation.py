@@ -80,8 +80,9 @@ class MemoryConsolidationTest(unittest.TestCase):
     self.assertIn("python_indent.md", catalog)
     self.assertFalse((self.root / "old_indent.md").exists())
 
+    selected = json.dumps([catalog.index("python_indent.md")])
     model = ToolCallingModel(responses=[
-      AIMessage(content="[0]"), AIMessage(content="两个空格。"),
+      AIMessage(content=selected), AIMessage(content="两个空格。"),
     ])
     build_agent(model).invoke({"messages": [HumanMessage(content="缩进？")]})
     self.assertIn(QUERY, model.calls[-1][0].text)

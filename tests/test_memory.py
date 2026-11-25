@@ -3,6 +3,8 @@
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from types import SimpleNamespace
+from unittest.mock import patch
 
 from pydantic import ValidationError
 
@@ -39,22 +41,36 @@ class MemoryStoreTest(unittest.TestCase):
 
 
   def test_rebuild_index_from_records(self):
-    """索引按文件名排序，可重建且不包含正文。"""
-    self.store.save(self.record)
-    self.store.save(MemoryRecord(
-      name="Agent_docs", description="项目文档\n入口", type="reference",
-      body="README.md",
-    ))
+    """索引按创建时间排序，可重建且不包含正文。"""
+    lstat = Path.lstat
+    created_at = {"python_style2.md": 1, "agent_docs.md": 2}
+
+    def file_stat(path: Path):
+      """让较早创建的文件拥有较新的修改时间。"""
+      info = lstat(path)
+      if path.name in created_at:
+        timestamp = created_at[path.name]
+        return SimpleNamespace(
+          st_mode=info.st_mode, st_birthtime=timestamp, st_mtime=3 - timestamp,
+        )
+      return info
+
     index = self.root / "MEMORY.md"
     expected = (
-      "- [Agent_docs](agent_docs.md) - 项目文档 入口\n"
       "- [Python_Style2](python_style2.md) - 缩进偏好\n"
+      "- [Agent_docs](agent_docs.md) - 项目文档 入口\n"
     )
-    self.assertEqual(index.read_text(encoding="utf-8"), expected)
+    with patch.object(Path, "lstat", file_stat):
+      self.store.save(self.record)
+      self.store.save(MemoryRecord(
+        name="Agent_docs", description="项目文档\n入口", type="reference",
+        body="README.md",
+      ))
+      self.assertEqual(index.read_text(encoding="utf-8"), expected)
 
-    index.unlink()
-    self.store.rebuild_index()
-    self.assertEqual(index.read_text(encoding="utf-8"), expected)
+      index.unlink()
+      self.store.rebuild_index()
+      self.assertEqual(index.read_text(encoding="utf-8"), expected)
 
 
   def test_duplicate_and_reserved_names_do_not_overwrite(self):
