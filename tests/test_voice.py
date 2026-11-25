@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, call, patch
 
 from lota.voice import speak
 
@@ -25,8 +25,10 @@ class VoiceTest(unittest.TestCase):
     self.model = Mock(sample_rate=24000)
     self.player = Mock()
     self.player_factory = Mock(return_value=self.player)
+    self.zeros = Mock()
     self.enterContext(patch("lota.voice._load_model", return_value=self.model))
     self.enterContext(patch.dict(sys.modules, {
+      "mlx.core": SimpleNamespace(zeros=self.zeros),
       "mlx_audio.tts.audio_player": SimpleNamespace(
         AudioPlayer=self.player_factory,
       ),
@@ -34,7 +36,7 @@ class VoiceTest(unittest.TestCase):
 
 
   def test_chunks_are_queued_before_generation_finishes(self):
-    """第一块先入队，再请求下一块；生成完才等待播放结束。"""
+    """第一块立即入队；末尾加半秒静音后等待播放结束。"""
     first = SimpleNamespace(size=100)
     second = SimpleNamespace(size=50)
 
@@ -52,12 +54,14 @@ class VoiceTest(unittest.TestCase):
     speak("你好")
 
     self.player_factory.assert_called_once_with(sample_rate=24000)
-    self.assertEqual(
-      [call.args for call in self.player.queue_audio.call_args_list],
-      [(first,), (second,)],
-    )
-    self.player.wait_for_drain.assert_called_once_with()
-    self.player.flush.assert_called_once_with()
+    self.zeros.assert_called_once_with((12000,))
+    self.assertEqual(self.player.mock_calls, [
+      call.queue_audio(first),
+      call.queue_audio(second),
+      call.queue_audio(self.zeros.return_value),
+      call.wait_for_drain(),
+      call.flush(),
+    ])
 
 
   def test_interrupt_flushes_partial_playback(self):
@@ -70,5 +74,6 @@ class VoiceTest(unittest.TestCase):
     self.model.generate.side_effect = generate
     with self.assertRaises(KeyboardInterrupt):
       speak("你好")
+    self.zeros.assert_not_called()
     self.player.wait_for_drain.assert_not_called()
     self.player.flush.assert_called_once_with()

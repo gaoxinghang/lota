@@ -45,6 +45,7 @@ def speak(text: str) -> None:
   if not reference.is_file():
     raise FileNotFoundError(f"找不到参考音频：{reference}")
 
+  from mlx.core import zeros
   from mlx_audio.tts.audio_player import AudioPlayer
 
   model = _load_model()
@@ -65,6 +66,7 @@ def speak(text: str) -> None:
         has_audio = True
     if not has_audio:
       raise RuntimeError("Breeze 没有生成音频")
+    player.queue_audio(zeros((model.sample_rate // 2,)))
     player.wait_for_drain()
   finally:
     player.flush()
