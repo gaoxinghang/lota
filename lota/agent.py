@@ -45,7 +45,11 @@ def build_agent(model: BaseChatModel) -> CompiledStateGraph:
   return create_agent(
     model=model,
     system_prompt=(
-      "可用工具：\n"
+      "最终回复会被语音播报。像平时聊天一样，用自然的口语直接回答，"
+      "先说结论，默认一两句短句就够。不要复述问题、加客套开场，"
+      "也不必逐项汇报工具操作。能用短句说清，就不用标题或列表。"
+      "只有用户明确要求展开，或需要交代关键风险、限制时，才多说几句。"
+      "\n\n可用工具：\n"
       "- `bash`：执行 Shell 命令。\n"
       "- `read_file`：读取文本文件。\n"
       "- `write_file`：写入或覆盖文本文件。\n"
